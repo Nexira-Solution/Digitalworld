@@ -13,8 +13,9 @@ import { useCart } from '@/components/CartContext';
 
 const INK = '#000000';
 const INK_SOFT = '#6B6B6B';
-const GOLD = '#C9A227';
-const GOLD_WASH = '#F6EFD9';
+const ORANGE = '#F97316';
+const ORANGE_DARK = '#EA580C';
+const ORANGE_WASH = '#FFF1E6';
 const LINE = '#E8E8E8';
 const DISABLED = '#BDBDBD';
 const PAPER = '#FFFFFF';
@@ -34,10 +35,10 @@ const OPTION_FIELDS = ['sleeveOptions', 'zipOptions'];
 const BTN_BASE =
   'inline-flex items-center justify-center gap-1.5 h-11 md:h-10 rounded-md text-[12px] sm:text-[13px] font-medium tracking-wide whitespace-nowrap transition-all active:scale-[0.97] disabled:opacity-40 disabled:cursor-not-allowed';
 
-const BTN_CART = `${BTN_BASE} w-11 shrink-0 md:w-auto md:flex-1 md:px-3 bg-white text-black border border-[#C9A227] hover:bg-[#F6EFD9]`;
-const BTN_CART_ADDED = `${BTN_BASE} w-11 shrink-0 md:w-auto md:flex-1 md:px-3 bg-[#F6EFD9] text-black border border-[#C9A227]`;
-const BTN_BUY = `${BTN_BASE} flex-1 px-3 bg-black text-[#C9A227] border border-[#C9A227] hover:bg-[#C9A227] hover:text-black`;
-const BTN_FULL = `${BTN_BASE} w-full px-3 bg-black text-[#C9A227] border border-[#C9A227] hover:bg-[#C9A227] hover:text-black`;
+const BTN_CART = `${BTN_BASE} w-11 shrink-0 md:w-auto md:flex-1 md:px-3 bg-white text-[#F97316] border border-[#F97316] hover:bg-[#FFF1E6]`;
+const BTN_CART_ADDED = `${BTN_BASE} w-11 shrink-0 md:w-auto md:flex-1 md:px-3 bg-[#FFF1E6] text-[#EA580C] border border-[#F97316]`;
+const BTN_BUY = `${BTN_BASE} flex-1 px-3 bg-[#F97316] text-white border border-[#F97316] hover:bg-[#EA580C] hover:border-[#EA580C]`;
+const BTN_FULL = `${BTN_BASE} w-full px-3 bg-[#F97316] text-white border border-[#F97316] hover:bg-[#EA580C] hover:border-[#EA580C]`;
 
 export default function ProductCard({ product }) {
   const router = useRouter();
@@ -124,7 +125,7 @@ export default function ProductCard({ product }) {
       {/* Image */}
       <div className="relative">
         <Link href={href} className="block" aria-label={product.name}>
-          <div className="relative aspect-[3/4] overflow-hidden" style={{ background: GOLD_WASH }}>
+          <div className="relative aspect-[3/4] overflow-hidden" style={{ background: ORANGE_WASH }}>
             <Image
               src={image}
               alt={product.name}
@@ -154,7 +155,7 @@ export default function ProductCard({ product }) {
           ) : discountPct > 0 ? (
             <span
               className="text-[11px] font-semibold uppercase tracking-wider"
-              style={{ color: INK, background: GOLD, padding: '5px 12px', borderRadius: '999px' }}
+              style={{ color: PAPER, background: ORANGE, padding: '5px 12px', borderRadius: '999px' }}
             >
               Sale
             </span>
@@ -173,8 +174,8 @@ export default function ProductCard({ product }) {
           <Heart
             className="w-4 h-4"
             strokeWidth={2}
-            style={{ color: wishlisted ? GOLD : INK }}
-            fill={wishlisted ? GOLD : 'none'}
+            style={{ color: wishlisted ? ORANGE : INK }}
+            fill={wishlisted ? ORANGE : 'none'}
           />
         </button>
       </div>
@@ -198,7 +199,7 @@ export default function ProductCard({ product }) {
             </span>
           )}
           {discountPct > 0 && (
-            <span className="text-xs font-medium" style={{ color: INK }}>
+            <span className="text-xs font-medium" style={{ color: ORANGE_DARK }}>
               {discountPct}% off
             </span>
           )}
@@ -221,8 +222,8 @@ export default function ProductCard({ product }) {
                 className="min-w-[30px] h-7 px-2 text-[11px] font-medium transition-colors"
                 style={{
                   borderRadius: '4px',
-                  border: `1px solid ${active ? INK : LINE}`,
-                  background: active ? INK : PAPER,
+                  border: `1px solid ${active ? ORANGE : LINE}`,
+                  background: active ? ORANGE : PAPER,
                   color: soldOut ? DISABLED : active ? PAPER : INK,
                   textDecoration: soldOut ? 'line-through' : 'none',
                   cursor: soldOut ? 'not-allowed' : 'pointer',

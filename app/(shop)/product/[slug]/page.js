@@ -2,10 +2,11 @@
 
 import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
+import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import Image from 'next/image';
 import { Fraunces, Inter } from 'next/font/google';
-import { Star, ShoppingBag, Zap, Heart, Share2, ChevronLeft, ChevronRight, X } from 'lucide-react';
+import { Star, ShoppingBag, Zap, Heart, Share2, ChevronLeft, ChevronRight, X, Store } from 'lucide-react';
 import { formatINR } from '@/lib/utils';
 import { getSizeStock, getCombinedStock } from '@/lib/stock';
 import { useCart } from '@/components/CartContext';
@@ -13,14 +14,11 @@ import ColorSizeSelector from '@/components/ColorSizeSelector';
 import ProductCard from '@/components/ProductCard';
 import toast from 'react-hot-toast';
 
-// Typography — a deliberate pairing instead of system defaults: Fraunces
-// for anything read as a headline, Inter for everything functional/UI.
+// Typography — Fraunces for headlines, Inter for functional/UI text.
 const display = Fraunces({ subsets: ['latin'], weight: ['400', '500'], style: ['normal', 'italic'], variable: '--font-display' });
 const body = Inter({ subsets: ['latin'], weight: ['400', '500', '600'], variable: '--font-body' });
 
-// Design tokens — white, black and gold. Black carries text and primary
-// actions, gold is the single accent, and one hairline tone separates
-// sections. No pills or drop shadows.
+// Design tokens — white, black and gold, with orange buttons.
 const PAPER = '#FFFFFF';
 const BLACK = '#000000';
 const GREY = '#5E5E5E';          // secondary text on white
@@ -30,11 +28,14 @@ const GOLD = '#C9A24B';          // stars, underlines, decorative accents
 const GOLD_DEEP = '#8C6A12';     // gold text on white (readable contrast)
 const GOLD_BRIGHT = '#E0BC5F';   // gold on black
 const GOLD_LIGHT = '#FBF6E9';    // very light gold surface (image wells)
+const ORANGE = '#EA580C';        // primary button
+const ORANGE_DARK = '#C2410C';   // outline button text
 
 export default function ProductPage() {
   const { slug } = useParams();
   const router = useRouter();
   const [data, setData] = useState(null);
+  const [notFound, setNotFound] = useState(false);
   const [activeVariant, setActiveVariant] = useState(null);
   const [activeImage, setActiveImage] = useState(0);
   const [activeSize, setActiveSize] = useState('');
@@ -58,13 +59,56 @@ export default function ProductPage() {
   }, []);
 
   useEffect(() => {
+    if (!slug) return;
+    let cancelled = false;
+
+    // Reset everything when moving to another product (e.g. a related one)
+    setData(null);
+    setNotFound(false);
+    setActiveImage(0);
+    setActiveSize('');
+    setActiveSleeve('');
+    setActiveZip('');
+    setActivePantId('');
+    setActiveShawlId('');
+    setQty(1);
+
+    // The API accepts a slug or an id
     fetch(`/api/products/${slug}`)
-      .then((r) => r.json())
-      .then((d) => {
+      .then(async (r) => {
+        const d = await r.json();
+        if (cancelled) return;
+        if (!r.ok || !d.product) {
+          setNotFound(true);
+          return;
+        }
         setData(d);
-        setActiveVariant(d.product?.variants?.[0]);
+        setActiveVariant(d.product.variants?.[0] || null);
+      })
+      .catch(() => {
+        if (!cancelled) setNotFound(true);
       });
+
+    return () => { cancelled = true; };
   }, [slug]);
+
+  if (notFound) {
+    return (
+      <div className={`${body.className} min-h-screen flex items-center justify-center px-5`} style={{ background: PAPER }}>
+        <div className="flex flex-col items-center gap-3 text-center" style={{ color: GREY }}>
+          <h1 className={`${display.className} text-2xl`} style={{ color: BLACK }}>Product not found</h1>
+          <p className="text-sm">This product may have been removed or is no longer available.</p>
+          <Link
+            href="/"
+            className="mt-2 px-6 py-2.5 text-sm font-medium"
+            style={{ background: ORANGE, color: '#FFFFFF', borderRadius: '4px' }}
+          >
+            Back to home
+          </Link>
+        </div>
+      </div>
+    );
+  }
 
   if (!data?.product) {
     return (
@@ -78,14 +122,18 @@ export default function ProductPage() {
   }
 
   const { product, reviews, related } = data;
+
+  // product.seller is populated by the API with { _id, name, businessName }.
+  // It is null for superadmin products and for sellers who aren't approved.
+  const seller = product.seller && typeof product.seller === 'object' ? product.seller : null;
+  const sellerName = seller?.businessName || seller?.name || '';
+
   const images = activeVariant?.images || [];
   const discount = activeVariant?.compareAtPrice > activeVariant?.price
     ? Math.round(((activeVariant.compareAtPrice - activeVariant.price) / activeVariant.compareAtPrice) * 100)
     : 0;
 
-  // Product's own size chart images win; otherwise fall back to the
-  // category's. Requires GET /api/products/[slug] to populate
-  // category with `sizeChart`.
+  // Product's own size chart images win; otherwise fall back to the category's.
   const sizeChartImages = product.sizeChart?.length ? product.sizeChart : (product.category?.sizeChart || []);
 
   const selectedSizeStock = getSizeStock(activeVariant, activeSize);
@@ -223,14 +271,10 @@ export default function ProductPage() {
     <div className={`${body.className} ${display.variable}`} style={{ background: PAPER }}>
       <div className="max-w-5xl mx-auto px-5 sm:px-8 pt-4 sm:pt-16 pb-24 sm:pb-20">
 
-        {/* Even two-column split, generous gap, no sticky spine or gallery
-            chrome — the image and the details carry equal quiet weight. */}
         <div className="grid sm:grid-cols-2 gap-4 sm:gap-16">
 
           {/* ── Gallery ── */}
           <div className="sm:sticky sm:top-10 sm:self-start">
-            {/* Mobile: fixed viewport-relative height so the fold clears the
-                gallery quickly. Desktop: original aspect-ratio box. */}
             <div className="relative w-full h-[38vh] sm:h-auto sm:aspect-[4/5] overflow-hidden" style={{ background: GOLD_LIGHT, borderRadius: '4px' }}>
               {images[activeImage] && (
                 <Image
@@ -260,7 +304,6 @@ export default function ProductPage() {
                     <ChevronRight size={18} strokeWidth={1.5} style={{ color: BLACK }} />
                   </button>
 
-                  {/* Plain numeric counter instead of dots or a pill */}
                   <div
                     className="absolute bottom-3 right-3 text-[11px] font-medium tracking-wide"
                     style={{ color: BLACK }}
@@ -271,9 +314,6 @@ export default function ProductPage() {
               )}
             </div>
 
-            {/* Thumbnails — hidden on mobile to save above-the-fold space;
-                a thin gold underline marks the active one on desktop instead
-                of a ring/shadow */}
             {images.length > 1 && (
               <div className="hidden sm:flex gap-3 mt-3">
                 {images.map((img, i) => (
@@ -293,9 +333,6 @@ export default function ProductPage() {
               </div>
             )}
 
-            {/* Wishlist / share — hidden on mobile (sticky bar covers the
-                key actions there); a plain text row under the image on
-                desktop, not floating chrome on top of it */}
             <div className="hidden sm:flex items-center gap-5 mt-4">
               <button
                 onClick={() => { setWished((w) => !w); toast.success(wished ? 'Removed from wishlist' : 'Added to wishlist'); }}
@@ -327,7 +364,22 @@ export default function ProductPage() {
               {product.name}
             </h1>
 
-            {/* Ready to Ship badge — highlighted, sits just under the title */}
+            {/* Seller — opens the homepage filtered to this seller's
+                banners, combos and products */}
+            {seller?._id && sellerName && (
+              <Link
+                href={`/?seller=${seller._id}`}
+                className="inline-flex items-center gap-1.5 mt-2 text-xs w-fit"
+                style={{ color: GREY }}
+              >
+                <Store size={13} strokeWidth={1.5} />
+                Sold by{' '}
+                <span className="font-medium underline underline-offset-2" style={{ color: GOLD_DEEP }}>
+                  {sellerName}
+                </span>
+              </Link>
+            )}
+
             {product.isReadyToShip && (
               <span
                 className="inline-block mt-2 sm:mt-2.5 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide w-fit"
@@ -343,9 +395,6 @@ export default function ProductPage() {
               <span>· {product.reviewCount} reviews</span>
             </div>
 
-            {/* Price now reflects the base variant price PLUS whichever
-                pant/shawl add-ons are currently selected, so it updates
-                live as the customer changes those selectors below. */}
             <div className="flex items-baseline gap-3 mt-3 sm:mt-6">
               <span className={`${display.className} text-[22px] sm:text-[26px]`} style={{ color: BLACK, fontWeight: 500 }}>
                 {formatINR(unitPrice)}
@@ -367,8 +416,6 @@ export default function ProductPage() {
               </p>
             )}
 
-            {/* Fabric line — hidden on mobile above-the-fold view, still
-                shown on desktop where vertical space isn't at a premium */}
             {product.fabric && (
               <p className="hidden sm:block text-sm mt-3" style={{ color: GREY }}>
                 Fabric <span style={{ color: BLACK }}>— {product.fabric}</span>
@@ -443,15 +490,15 @@ export default function ProductPage() {
                 onClick={handleBuyNow}
                 disabled={sizeOutOfStock}
                 className="w-full flex items-center justify-center gap-2 font-medium py-3.5 transition-opacity active:opacity-80 disabled:opacity-40 disabled:cursor-not-allowed"
-                style={{ background: BLACK, color: GOLD_BRIGHT, border: `1px solid ${BLACK}`, borderRadius: '4px' }}
+                style={{ background: ORANGE, color: '#FFFFFF', border: `1px solid ${ORANGE}`, borderRadius: '4px' }}
               >
-                <Zap size={16} fill={GOLD_BRIGHT} /> {sizeOutOfStock ? 'Out of Stock' : 'Buy Now'}
+                <Zap size={16} fill="#FFFFFF" /> {sizeOutOfStock ? 'Out of Stock' : 'Buy Now'}
               </button>
               <button
                 onClick={handleAddToCart}
                 disabled={sizeOutOfStock}
                 className="w-full flex items-center justify-center gap-2 font-medium py-3.5 transition-opacity active:opacity-70 disabled:opacity-40 disabled:cursor-not-allowed"
-                style={{ border: `1px solid ${BLACK}`, color: BLACK, background: PAPER, borderRadius: '4px' }}
+                style={{ border: `1px solid ${ORANGE}`, color: ORANGE_DARK, background: PAPER, borderRadius: '4px' }}
               >
                 <ShoppingBag size={15} /> {sizeOutOfStock ? 'Out of Stock' : 'Add to Cart'}
               </button>
@@ -491,7 +538,6 @@ export default function ProductPage() {
                     {r.comment}
                   </p>
 
-                  {/* Review images — only rendered when present */}
                   {r.images?.length > 0 && (
                     <div className="flex gap-2 mt-3 flex-wrap">
                       {r.images.map((img, i) => (
@@ -527,9 +573,8 @@ export default function ProductPage() {
         )}
       </div>
 
-      {/* Sticky mobile buy bar — portaled directly to <body> so no ancestor
-          can break its fixed positioning. */}
-      {mounted && data?.product && createPortal(
+      {/* Sticky mobile buy bar — portaled to <body> so no ancestor breaks its fixed positioning. */}
+      {mounted && createPortal(
         <div
           className="sm:hidden fixed bottom-0 left-0 right-0 flex items-center gap-3 px-5 py-3"
           style={{ background: PAPER, borderTop: `1px solid ${GOLD}`, zIndex: 9999 }}
@@ -548,7 +593,7 @@ export default function ProductPage() {
             onClick={handleAddToCart}
             disabled={sizeOutOfStock}
             className="flex-1 flex items-center justify-center gap-1.5 font-medium py-2.5 text-sm disabled:opacity-40"
-            style={{ border: `1px solid ${BLACK}`, color: BLACK, background: PAPER, borderRadius: '4px' }}
+            style={{ border: `1px solid ${ORANGE}`, color: ORANGE_DARK, background: PAPER, borderRadius: '4px' }}
           >
             <ShoppingBag size={15} /> Cart
           </button>
@@ -556,15 +601,15 @@ export default function ProductPage() {
             onClick={handleBuyNow}
             disabled={sizeOutOfStock}
             className="flex-1 flex items-center justify-center gap-1.5 font-medium py-2.5 text-sm disabled:opacity-40"
-            style={{ background: BLACK, color: GOLD_BRIGHT, border: `1px solid ${BLACK}`, borderRadius: '4px' }}
+            style={{ background: ORANGE, color: '#FFFFFF', border: `1px solid ${ORANGE}`, borderRadius: '4px' }}
           >
-            <Zap size={15} fill={GOLD_BRIGHT} /> {sizeOutOfStock ? 'Sold out' : 'Buy now'}
+            <Zap size={15} fill="#FFFFFF" /> {sizeOutOfStock ? 'Sold out' : 'Buy now'}
           </button>
         </div>,
         document.body
       )}
 
-      {/* Review-image lightbox — single image, closes on backdrop click or the ✕ button */}
+      {/* Review-image lightbox */}
       {mounted && lightboxImg && createPortal(
         <div
           onClick={() => setLightboxImg(null)}
@@ -586,8 +631,7 @@ export default function ProductPage() {
         document.body
       )}
 
-      {/* Size chart modal — swipeable carousel when there's more than one
-          image, closes on backdrop click or the ✕ button */}
+      {/* Size chart modal */}
       {mounted && sizeChartOpen && sizeChartImages.length > 0 && createPortal(
         <div
           onClick={() => setSizeChartOpen(false)}

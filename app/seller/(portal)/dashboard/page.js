@@ -6,7 +6,8 @@ import { useRouter } from 'next/navigation';
 
 const INK = '#000000';
 const INK_SOFT = '#6B6B6B';
-const GOLD = '#C9A227';
+const ORANGE = '#F97316';
+const ORANGE_WASH = '#FFF1E6';
 const LINE = '#E8E8E8';
 const PAPER = '#FFFFFF';
 
@@ -49,7 +50,7 @@ export default function SellerDashboardPage() {
       </p>
 
       {isPending && (
-        <div className="mb-8 px-4 py-3 text-[13px]" style={{ background: '#FBF3D9', color: INK }}>
+        <div className="mb-8 px-4 py-3 text-[13px]" style={{ background: ORANGE_WASH, color: INK }}>
           Your seller account is pending approval. You can view this dashboard, but you won&apos;t
           be able to add products or manage orders until a superadmin approves your business.
         </div>
@@ -67,9 +68,11 @@ export default function SellerDashboardPage() {
         <StatCard label="Revenue" value={stats ? `₹${stats.revenue.toLocaleString('en-IN')}` : '—'} />
       </div>
 
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+        <DashLink href="/seller/profile" title="My Profile" disabled={false} />
         <DashLink href="/seller/products" title="Manage Inventory" disabled={isPending || isRejected} />
         <DashLink href="/seller/orders" title="My Orders" disabled={isPending || isRejected} />
+        <DashLink href="/seller/banners" title="My Banners" disabled={isPending || isRejected} />
         <DashLink href="/seller/settings" title="Settings" disabled={false} />
       </div>
     </div>
@@ -101,7 +104,7 @@ function DashLink({ href, title, disabled }) {
       style={{ border: `1px solid ${LINE}`, color: INK }}
     >
       {title}
-      <div className="mt-2" style={{ width: '20px', height: '2px', background: GOLD }} />
+      <div className="mt-2" style={{ width: '20px', height: '2px', background: ORANGE }} />
     </Link>
   );
 }

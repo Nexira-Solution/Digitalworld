@@ -9,7 +9,17 @@ const BannerSchema = new mongoose.Schema(
     link: { type: String, default: '' },
     buttonText: { type: String, default: 'Shop Now' },
     sortOrder: { type: Number, default: 0 },
-    isActive: { type: Boolean, default: true }
+    isActive: { type: Boolean, default: true },
+
+    // Who owns it. null = created by superadmin.
+    seller: { type: mongoose.Schema.Types.ObjectId, ref: 'Admin', default: null },
+    // Existing banners default to 'approved', so they keep showing.
+    approval: {
+      type: String,
+      enum: ['pending', 'approved', 'rejected'],
+      default: 'approved',
+    },
+    rejectionReason: { type: String, default: '' },
   },
   { timestamps: true }
 );

@@ -6,13 +6,13 @@ import { usePathname, useRouter } from 'next/navigation';
 import {
   LayoutDashboard, Package, ListTree, ShoppingCart, Boxes, Image as ImageIcon,
   Clapperboard, Star, Ticket, Layers, FileBarChart, Settings as SettingsIcon,
-  Menu, X, LogOut, Users
+  Menu, X, LogOut, Users, User
 } from 'lucide-react';
 
 const INK = '#000000';
 const INK_SOFT = '#6B6B6B';
-const GOLD = '#C9A227';
-const GOLD_WASH = '#F6EFD9';
+const ORANGE = '#F97316';
+const ORANGE_WASH = '#FFF1E6';
 const LINE = '#E8E8E8';
 const PAPER = '#FFFFFF';
 
@@ -36,8 +36,10 @@ const ADMIN_NAV = [
 // Seller nav — scoped to their own business, under /seller/*
 const SELLER_NAV = [
   { href: '/seller/dashboard', label: 'Dashboard',   icon: LayoutDashboard },
+  { href: '/seller/profile',   label: 'My Profile',  icon: User },
   { href: '/seller/products',  label: 'My Products', icon: Package },
-  { href: '/seller/combos',    label: 'My Combos',   icon: Layers },   // ← add
+  { href: '/seller/combos',    label: 'My Combos',   icon: Layers },
+  { href: '/seller/banners',   label: 'My Banners',  icon: ImageIcon },
   { href: '/seller/orders',    label: 'My Orders',   icon: ShoppingCart },
   { href: '/seller/settings',  label: 'Settings',    icon: SettingsIcon },
 ];
@@ -97,12 +99,12 @@ export default function AdminShell({ admin, navSet = 'admin', children }) {
                 className="flex items-center gap-3 px-3 py-2.5 text-sm font-medium transition-colors"
                 style={{
                   borderRadius: '4px',
-                  background: active ? INK : 'transparent',
-                  color: active ? GOLD : INK_SOFT,
+                  background: active ? ORANGE : 'transparent',
+                  color: active ? PAPER : INK_SOFT,
                 }}
                 onMouseEnter={(e) => {
                   if (!active) {
-                    e.currentTarget.style.background = GOLD_WASH;
+                    e.currentTarget.style.background = ORANGE_WASH;
                     e.currentTarget.style.color = INK;
                   }
                 }}
@@ -126,7 +128,7 @@ export default function AdminShell({ admin, navSet = 'admin', children }) {
             className="flex items-center gap-3 px-3 py-2.5 text-sm font-medium w-full transition-colors"
             style={{ borderRadius: '4px', color: INK_SOFT }}
             onMouseEnter={(e) => {
-              e.currentTarget.style.background = GOLD_WASH;
+              e.currentTarget.style.background = ORANGE_WASH;
               e.currentTarget.style.color = INK;
             }}
             onMouseLeave={(e) => {
@@ -148,7 +150,7 @@ export default function AdminShell({ admin, navSet = 'admin', children }) {
             <Menu size={22} />
           </button>
           <span className="font-medium text-base" style={{ color: INK }}>
-            MailooBazar{navSet === 'seller' ? 'Seller' : 'Admin'}
+            MailooBazar {navSet === 'seller' ? 'Seller' : 'Admin'}
           </span>
         </header>
 
