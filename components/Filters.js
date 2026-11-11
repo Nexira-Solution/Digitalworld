@@ -42,7 +42,7 @@ export default function Filters({ sort, onSortChange }) {
           <select
             value={sort}
             onChange={(e) => handleChange(e.target.value)}
-            className="appearance-none bg-transparent outline-none text-[12px] tracking-wide pr-6 py-1"
+            className="appearance-none bg-transparent outline-none text-[12px] tracking-wide px-4 py-2"
             style={{ color: INK, borderBottom: `1px solid ${LINE}` }}
             onFocus={(e) => (e.currentTarget.style.borderBottomColor = GOLD)}
             onBlur={(e) => (e.currentTarget.style.borderBottomColor = LINE)}

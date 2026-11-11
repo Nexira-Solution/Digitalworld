@@ -109,18 +109,18 @@ export default async function HomePage({ searchParams }) {
             </section>
           )}
 
-          <section className="max-w-6xl mx-auto px-4 pt-10 pb-16 text-center">
+          <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-10 pb-16 text-center">
             <h2
-              className="text-lg sm:text-xl font-bold tracking-[3px] uppercase"
+              className="text-xl sm:text-2xl font-bold tracking-[3px] uppercase"
               style={{ color: INK, fontFamily: FONT_SANS }}
             >
               Products
             </h2>
 
             {plainProducts.length > 0 ? (
-              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-6 sm:gap-8 mt-8 text-left">
-                {plainProducts.map((p) => (
-                  <ProductCard key={p._id} product={p} />
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 mt-8 text-left">
+                {plainProducts.map((p, idx) => (
+                  <ProductCard key={p._id || idx} product={p} index={idx} />
                 ))}
               </div>
             ) : (
@@ -176,29 +176,59 @@ export default async function HomePage({ searchParams }) {
             </section>
           )}
 
-          <section className="max-w-6xl mx-auto px-4 pt-8 sm:pt-10 pb-16 text-center">
-            <h3
-              className="text-lg sm:text-xl font-bold tracking-[3px] uppercase"
-              style={{ color: INK, fontFamily: FONT_SANS }}
-            >
-              Featured Collection
-            </h3>
-
-            {plainProducts.length > 0 && (
-              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-6 sm:gap-8 mt-8 text-left">
-                {plainProducts.map((p) => (
-                  <ProductCard key={p._id} product={p} />
-                ))}
+          {/* ===================== FEATURED COLLECTION ===================== */}
+          <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-10 sm:pt-14 pb-16">
+            <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 mb-8 sm:mb-10 pb-5 border-b" style={{ borderColor: HAIRLINE }}>
+              <div>
+                <span
+                  className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-bold tracking-wider uppercase mb-2"
+                  style={{ background: '#F6EFD9', color: '#1A1A1A', fontFamily: FONT_SANS }}
+                >
+                  <span className="w-1.5 h-1.5 rounded-full" style={{ background: '#C9A227' }} />
+                  Curated Essentials
+                </span>
+                <h2
+                  className="text-2xl sm:text-3xl font-bold tracking-tight"
+                  style={{ color: INK, fontFamily: FONT_SANS }}
+                >
+                  Featured Collection
+                </h2>
+                <p className="mt-1 text-sm sm:text-base max-w-xl" style={{ color: INK_SOFT, fontFamily: FONT_SANS }}>
+                  Discover our most popular picks, crafted with exceptional quality and timeless style.
+                </p>
               </div>
-            )}
 
-            <Link
-              href="/products"
-              className="inline-block mt-10 px-8 py-3 text-[12px] font-bold tracking-[2px] uppercase transition-colors bg-[#F97316] text-white border border-[#F97316] hover:bg-[#EA580C] hover:border-[#EA580C]"
-              style={{ fontFamily: FONT_SANS }}
-            >
-              Shop the collection
-            </Link>
+              <Link
+                href="/products"
+                className="inline-flex items-center gap-1.5 text-sm font-semibold transition-colors group shrink-0"
+                style={{ color: '#000000', fontFamily: FONT_SANS }}
+              >
+                <span className="group-hover:text-[#C9A227] transition-colors">View All Products</span>
+                <ArrowRight size={16} className="transition-transform group-hover:translate-x-1 group-hover:text-[#C9A227]" />
+              </Link>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+              {(plainProducts.length > 0 ? plainProducts : Array.from({ length: 4 }).map((_, idx) => ({ id: `demo-prod-${idx}` }))).map((p, idx) => (
+                <ProductCard key={p._id || p.id || idx} product={p} index={idx} />
+              ))}
+            </div>
+
+            <div className="mt-12 text-center">
+              <Link
+                href="/products"
+                className="inline-flex items-center justify-center gap-2 px-8 py-3.5 text-xs sm:text-sm font-semibold tracking-wider uppercase rounded-full transition-all duration-200 shadow-sm hover:bg-[#222222] active:scale-[0.98]"
+                style={{
+                  background: '#000000',
+                  color: '#FFFFFF',
+                  border: '1px solid #000000',
+                  fontFamily: FONT_SANS,
+                }}
+              >
+                <span>Shop the collection</span>
+                <ArrowRight size={16} />
+              </Link>
+            </div>
           </section>
 
           <ReviewSection reviews={plainReviews} />

@@ -56,8 +56,8 @@ export default function ProductTabs({ activeSellers, bestSellers, topSellers }) 
         </div>
       </div>
 
-      {/* Product grid — extra row gap now that each card has buttons under it */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-x-4 gap-y-8 mt-6">
+      {/* Product grid — responsive modern spacing */}
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 sm:gap-6 lg:gap-8 mt-6">
         {products.map((p) => (
           <ProductCard key={p._id} product={p} />
         ))}

@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "seed": "node scripts/seed.js"
+    "seed": "node scripts/seed.js",
+    "seed:products": "node scripts/seedProducts.js"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1155.0",

@@ -15,7 +15,7 @@ const SLEEVE_OPTIONS = ['Full Sleeve', 'Half Sleeve', 'Elbow Sleeve', 'Sleeveles
 const ZIP_OPTIONS = ['With Zip', 'Without Zip'];
 
 function emptyVariant() {
-  return { color: '', colorHex: '#000000', price: '', compareAtPrice: '', images: '', sizes: [{ size: '', stock: '' }] };
+  return { color: '', colorHex: '#000000', price: '', compareAtPrice: '', images: '', sizes: [{ size: '', stock: '', price: '', compareAtPrice: '' }] };
 }
 function emptyAddon() {
   return { name: '', image: '', price: '', stock: '', sku: '' };
@@ -39,12 +39,15 @@ export default function ProductForm({ productId, initialProduct }) {
     description: '',
     fabric: '',
     tags: '',
+    isBestSeller: false,
+    offers: '',
+    trustBadgesText: '',
     isReadyToShip: false,
     sizeChart: '',
     sleeveOptions: [],
     zipOptions: [],
-    attributes: {},   // NEW — brand, warranty, FSSAI, ...
-    specs: [],        // NEW — [{ key, value }]
+    attributes: {},   // brand, warranty, FSSAI, ingredients, ...
+    specs: [],        // [{ key, value }] e.g. Nutrition
   });
   const [variants, setVariants] = useState([emptyVariant()]);
   const [pantOptions, setPantOptions] = useState([]);
@@ -69,6 +72,9 @@ export default function ProductForm({ productId, initialProduct }) {
       description: p.description || '',
       fabric: p.fabric || '',
       tags: (p.tags || []).join(', '),
+      isBestSeller: Boolean(p.isBestSeller),
+      offers: Array.isArray(p.offers) ? p.offers.join(', ') : p.offers || '',
+      trustBadgesText: Array.isArray(p.trustBadges) ? p.trustBadges.map((b) => b.title).join(', ') : '',
       isReadyToShip: !!p.isReadyToShip,
       sizeChart: (p.sizeChart || []).join(', '),
       sleeveOptions: p.sleeveOptions || [],
@@ -85,7 +91,12 @@ export default function ProductForm({ productId, initialProduct }) {
             price: v.price ?? '',
             compareAtPrice: v.compareAtPrice ?? '',
             images: (v.images || []).join(', '),
-            sizes: (v.sizes || []).map((s) => ({ size: s.size || '', stock: s.stock ?? '' })),
+            sizes: (v.sizes || []).map((s) => ({
+              size: s.size || '',
+              stock: s.stock ?? '',
+              price: s.price ?? '',
+              compareAtPrice: s.compareAtPrice ?? '',
+            })),
           }))
         : [emptyVariant()]
     );
@@ -130,7 +141,19 @@ export default function ProductForm({ productId, initialProduct }) {
     );
   }
   function addSize(vi) {
-    setVariants((vs) => vs.map((v, idx) => (idx === vi ? { ...v, sizes: [...v.sizes, { size: '', stock: '' }] } : v)));
+    setVariants((vs) =>
+      vs.map((v, idx) =>
+        idx === vi
+          ? {
+              ...v,
+              sizes: [
+                ...v.sizes,
+                { size: '', stock: '', price: v.price || '', compareAtPrice: v.compareAtPrice || '' },
+              ],
+            }
+          : v
+      )
+    );
   }
   function removeSize(vi, si) {
     setVariants((vs) =>
@@ -202,10 +225,20 @@ export default function ProductForm({ productId, initialProduct }) {
       price: Number(v.price) || 0,
       compareAtPrice: Number(v.compareAtPrice) || 0,
       images: v.images.split(',').map((s) => s.trim()).filter(Boolean),
-      // blank rows are dropped here; the server fills in "Standard" for non-apparel
       sizes: v.sizes
         .filter((s) => s.size)
-        .map((s) => ({ size: s.size, stock: Number(s.stock) || 0 })),
+        .map((s) => {
+          const sPrice = s.price !== undefined && s.price !== '' ? Number(s.price) : Number(v.price) || 0;
+          const sCompare = s.compareAtPrice !== undefined && s.compareAtPrice !== '' ? Number(s.compareAtPrice) : Number(v.compareAtPrice) || 0;
+          const sDiscount = sCompare > sPrice ? Math.round(((sCompare - sPrice) / sCompare) * 100) : 0;
+          return {
+            size: s.size,
+            stock: Number(s.stock) || 0,
+            price: sPrice,
+            compareAtPrice: sCompare,
+            discountPercentage: sDiscount,
+          };
+        }),
     }));
 
     const cleanAddons = (list) =>
@@ -220,14 +253,24 @@ export default function ProductForm({ productId, initialProduct }) {
           sku: o.sku,
         }));
 
-    // The server derives productType from the category and strips fields that
-    // don't apply, so it's safe to send everything.
     return {
       name: form.name,
       category: form.category,
       description: form.description,
       fabric: form.fabric,
       tags: form.tags.split(',').map((t) => t.trim()).filter(Boolean),
+      isBestSeller: Boolean(form.isBestSeller),
+      offers: form.offers.split(',').map((s) => s.trim()).filter(Boolean),
+      trustBadges: form.trustBadgesText
+        ? form.trustBadgesText
+            .split(',')
+            .map((s) => s.trim())
+            .filter(Boolean)
+            .map((t, idx) => {
+              const icons = ['Leaf', 'FlaskConical', 'ShieldCheck', 'Award', 'HandPlatter'];
+              return { title: t, subtitle: 'Certified', icon: icons[idx % icons.length] };
+            })
+        : [],
       isReadyToShip: form.isReadyToShip,
       sizeChart: form.sizeChart.split(',').map((s) => s.trim()).filter(Boolean),
       sleeveOptions: form.sleeveOptions,
@@ -383,14 +426,54 @@ export default function ProductForm({ productId, initialProduct }) {
           </Field>
         )}
 
-        <label className="flex items-center gap-2 text-[13px]" style={{ color: INK }}>
+        {/* Best Seller & Ready to Ship Toggles */}
+        <div className="flex flex-wrap gap-6 pt-2">
+          <label className="flex items-center gap-2 text-[13px] font-medium" style={{ color: INK }}>
+            <input
+              type="checkbox"
+              checked={form.isBestSeller}
+              onChange={(e) => updateField('isBestSeller', e.target.checked)}
+            />
+            👑 Mark as Best Seller
+          </label>
+
+          <label className="flex items-center gap-2 text-[13px] font-medium" style={{ color: INK }}>
+            <input
+              type="checkbox"
+              checked={form.isReadyToShip}
+              onChange={(e) => updateField('isReadyToShip', e.target.checked)}
+            />
+            Ready to Ship
+          </label>
+        </div>
+
+        {/* Promotional Offers */}
+        <Field label="Special Offers & Benefits (comma separated)">
           <input
-            type="checkbox"
-            checked={form.isReadyToShip}
-            onChange={(e) => updateField('isReadyToShip', e.target.checked)}
+            value={form.offers}
+            onChange={(e) => updateField('offers', e.target.value)}
+            className={fieldInput}
+            style={fieldInputStyle}
+            placeholder="e.g. 40% Instant Discount, Extra 10% off on Prepaid, Free Delivery above ₹499"
           />
-          Ready to Ship
-        </label>
+          <p className="text-[11px] mt-1" style={{ color: INK_SOFT }}>
+            These highlights appear as bullet points under Offers & Benefits on the product page.
+          </p>
+        </Field>
+
+        {/* Product Trust Strip Badges */}
+        <Field label="Trust Strip Highlights (optional, comma separated)">
+          <input
+            value={form.trustBadgesText}
+            onChange={(e) => updateField('trustBadgesText', e.target.value)}
+            className={fieldInput}
+            style={fieldInputStyle}
+            placeholder="e.g. 100% Natural, Hygienically Prepared, Premium Quality, Authentic Recipe, Freshly Packed"
+          />
+          <p className="text-[11px] mt-1" style={{ color: INK_SOFT }}>
+            Custom badges displayed in the trust strip below the product. Leave blank to use category defaults.
+          </p>
+        </Field>
       </Section>
 
       {/* Sleeve / Zip options — apparel only */}
@@ -493,39 +576,102 @@ export default function ProductForm({ productId, initialProduct }) {
                 />
               </Field>
 
-              <div className="mt-3">
-                <span className="text-[11px] tracking-[1px] uppercase" style={{ color: INK_SOFT }}>{type.sizeLabel}</span>
-                {v.sizes.map((s, si) => (
-                  <div key={si} className="flex gap-2 mt-2 items-center">
-                    <input
-                      value={s.size}
-                      onChange={(e) => updateSize(vi, si, 'size', e.target.value)}
-                      placeholder={type.sizePlaceholder}
-                      className="px-3 py-2 text-sm outline-none w-56"
-                      style={fieldInputStyle}
-                    />
-                    <input
-                      type="number"
-                      value={s.stock}
-                      onChange={(e) => updateSize(vi, si, 'stock', e.target.value)}
-                      placeholder="Stock"
-                      className="px-3 py-2 text-sm outline-none w-28"
-                      style={fieldInputStyle}
-                    />
-                    {v.sizes.length > 1 && (
-                      <button type="button" onClick={() => removeSize(vi, si)} style={{ color: RED }} className="text-[12px]">
-                        ×
-                      </button>
-                    )}
-                  </div>
-                ))}
+              <div className="mt-4">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-[11px] tracking-[1px] uppercase font-semibold" style={{ color: INK_SOFT }}>
+                    {type.sizeLabel || 'Pack Sizes & Pricing'}
+                  </span>
+                  <span className="text-[11px]" style={{ color: INK_SOFT }}>
+                    Each pack size can have its own actual price, MRP, and stock.
+                  </span>
+                </div>
+
+                <div className="space-y-2">
+                  {v.sizes.map((s, si) => {
+                    const sPrice = s.price !== '' && s.price !== undefined ? Number(s.price) : Number(v.price) || 0;
+                    const sCompare = s.compareAtPrice !== '' && s.compareAtPrice !== undefined ? Number(s.compareAtPrice) : Number(v.compareAtPrice) || 0;
+                    const sDiscount = sCompare > sPrice && sCompare > 0 ? Math.round(((sCompare - sPrice) / sCompare) * 100) : 0;
+
+                    return (
+                      <div key={si} className="flex flex-wrap sm:flex-nowrap gap-2 items-center p-2.5 rounded bg-[#FAFAFA] border border-[#E8E8E8]">
+                        <div className="w-32 shrink-0">
+                          <label className="block text-[10px] uppercase text-[#6B6B6B] mb-0.5">Size / Pack</label>
+                          <input
+                            value={s.size}
+                            onChange={(e) => updateSize(vi, si, 'size', e.target.value)}
+                            placeholder={type.sizePlaceholder || 'e.g. 100 g'}
+                            className="w-full px-2.5 py-1.5 text-xs outline-none bg-white border border-[#E8E8E8]"
+                          />
+                        </div>
+
+                        <div className="w-28 shrink-0">
+                          <label className="block text-[10px] uppercase text-[#6B6B6B] mb-0.5">Actual Rate (₹)</label>
+                          <input
+                            type="number"
+                            value={s.price}
+                            onChange={(e) => updateSize(vi, si, 'price', e.target.value)}
+                            placeholder={v.price ? String(v.price) : 'Rate'}
+                            className="w-full px-2.5 py-1.5 text-xs outline-none bg-white border border-[#E8E8E8]"
+                          />
+                        </div>
+
+                        <div className="w-28 shrink-0">
+                          <label className="block text-[10px] uppercase text-[#6B6B6B] mb-0.5">MRP / Original (₹)</label>
+                          <input
+                            type="number"
+                            value={s.compareAtPrice}
+                            onChange={(e) => updateSize(vi, si, 'compareAtPrice', e.target.value)}
+                            placeholder={v.compareAtPrice ? String(v.compareAtPrice) : 'MRP'}
+                            className="w-full px-2.5 py-1.5 text-xs outline-none bg-white border border-[#E8E8E8]"
+                          />
+                        </div>
+
+                        <div className="w-24 shrink-0">
+                          <label className="block text-[10px] uppercase text-[#6B6B6B] mb-0.5">Stock</label>
+                          <input
+                            type="number"
+                            value={s.stock}
+                            onChange={(e) => updateSize(vi, si, 'stock', e.target.value)}
+                            placeholder="Stock"
+                            className="w-full px-2.5 py-1.5 text-xs outline-none bg-white border border-[#E8E8E8]"
+                          />
+                        </div>
+
+                        {/* Calculated Discount Pill */}
+                        <div className="w-20 shrink-0 text-center">
+                          <label className="block text-[10px] uppercase text-[#6B6B6B] mb-0.5">Discount</label>
+                          {sDiscount > 0 ? (
+                            <span className="inline-block text-[11px] font-bold text-[#DC2626] bg-[#DC2626]/10 px-2 py-1 rounded">
+                              {sDiscount}% OFF
+                            </span>
+                          ) : (
+                            <span className="text-[11px] text-[#A0A0A0]">-</span>
+                          )}
+                        </div>
+
+                        {v.sizes.length > 1 && (
+                          <button
+                            type="button"
+                            onClick={() => removeSize(vi, si)}
+                            style={{ color: RED }}
+                            className="text-base px-1.5 hover:opacity-80"
+                            title="Remove pack size"
+                          >
+                            ×
+                          </button>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+
                 <button
                   type="button"
                   onClick={() => addSize(vi)}
-                  className="text-[12px] mt-2 underline"
+                  className="text-[12px] mt-2.5 font-semibold underline"
                   style={{ color: INK }}
                 >
-                  + Add {type.defaultSize ? 'Option' : 'Size'}
+                  + Add {type.defaultSize ? 'Option' : 'Pack Size'}
                 </button>
               </div>
             </div>

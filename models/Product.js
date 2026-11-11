@@ -7,6 +7,7 @@ const VariantSchema = new mongoose.Schema(
     images: [{ type: String }],
     price: { type: Number, required: true },
     compareAtPrice: { type: Number, default: 0 },
+    discountPercentage: { type: Number, default: 0 },
     // Holds sizes for apparel, pack sizes for food, configurations for electronics.
     // The label shown in the UI comes from lib/productTypes.js.
     sizes: [
@@ -14,6 +15,9 @@ const VariantSchema = new mongoose.Schema(
         size: { type: String, required: true },
         stock: { type: Number, default: 0 },
         sku: { type: String },
+        price: { type: Number },
+        compareAtPrice: { type: Number },
+        discountPercentage: { type: Number, default: 0 },
       },
     ],
   },
@@ -51,6 +55,21 @@ const ProductSchema = new mongoose.Schema(
 
     fabric: { type: String, default: '' },
     tags: [{ type: String }],
+    images: [{ type: String }],
+    offers: [{ type: String }],
+    trustBadges: [
+      {
+        _id: false,
+        title: { type: String, required: true },
+        subtitle: { type: String, default: '' },
+        icon: { type: String, default: 'Leaf' },
+      },
+    ],
+    deliveryInfo: {
+      estimatedDays: { type: Number, default: 2 },
+      dispatchDays: { type: String, default: '1-2 Days' },
+      freeDeliveryAbove: { type: Number },
+    },
     variants: [VariantSchema],
     sizeChart: [{ type: String }],
     sleeveOptions: [{ type: String, enum: ['Full Sleeve', 'Half Sleeve', 'Elbow Sleeve', 'Sleeveless'] }],
@@ -59,6 +78,7 @@ const ProductSchema = new mongoose.Schema(
     shawlOptions: [AddonOptionSchema],
     isReadyToShip: { type: Boolean, default: false },
     basePrice: { type: Number, required: true },
+    discountPercentage: { type: Number, default: 0 },
     rating: { type: Number, default: 0 },
     reviewCount: { type: Number, default: 0 },
     isBestSeller: { type: Boolean, default: false },
@@ -75,5 +95,9 @@ const ProductSchema = new mongoose.Schema(
 
 ProductSchema.index({ name: 'text', description: 'text', tags: 'text' });
 ProductSchema.index({ seller: 1 });
+ProductSchema.index({ slug: 1 }, { unique: true });
+ProductSchema.index({ category: 1 });
+ProductSchema.index({ isBestSeller: 1 });
+ProductSchema.index({ isActive: 1 });
 
 export default mongoose.models.Product || mongoose.model('Product', ProductSchema);

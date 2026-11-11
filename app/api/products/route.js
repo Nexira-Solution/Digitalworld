@@ -1,6 +1,7 @@
 export const dynamic = 'force-dynamic';
 
 import { NextResponse } from 'next/server';
+import mongoose from 'mongoose';
 import { dbConnect } from '@/lib/mongodb';
 import Product from '@/models/Product';
 import Category from '@/models/Category';
@@ -9,15 +10,36 @@ import { requireApprovedSeller } from '@/lib/apiAuth';
 import { generateSku } from '@/lib/sku';
 import { resolveProductType, sanitizeByType, PRODUCT_TYPE_KEYS } from '@/lib/productTypes';
 
+async function generateUniqueSlug(baseName, preferredSlug, excludeId = null) {
+  let base = slugify(preferredSlug || baseName || 'product', { lower: true, strict: true }) || 'product';
+  let slug = base;
+  let count = 1;
+  while (true) {
+    const existing = await Product.findOne({ slug });
+    if (!existing || (excludeId && String(existing._id) === String(excludeId))) {
+      break;
+    }
+    slug = `${base}-${count}`;
+    count++;
+  }
+  return slug;
+}
+
 export async function GET(req) {
   try {
     await dbConnect();
     const { searchParams } = new URL(req.url);
     const query = { isActive: true };
 
-    const categorySlug = searchParams.get('category');
-    if (categorySlug) {
-      const cat = await Category.findOne({ slug: categorySlug });
+    // 1. Category filter — supports slug or ObjectId
+    const categoryParam = searchParams.get('category');
+    if (categoryParam) {
+      let cat = null;
+      if (mongoose.isValidObjectId(categoryParam)) {
+        cat = await Category.findById(categoryParam);
+      } else {
+        cat = await Category.findOne({ slug: categoryParam });
+      }
       if (!cat) return NextResponse.json({ products: [], total: 0 });
 
       if (cat.parent) {
@@ -29,16 +51,34 @@ export async function GET(req) {
       }
     }
 
-    // NEW: optional ?productType=food|electronics|apparel|general
+    // 2. Bestseller filter — supports ?isBestSeller=true or ?flag=bestseller
+    const isBestSeller = searchParams.get('isBestSeller') || searchParams.get('bestseller');
+    if (isBestSeller === 'true' || searchParams.get('flag') === 'bestseller') {
+      query.isBestSeller = true;
+    }
+
+    // 3. Search query — supports ?search= or ?q=
+    const search = searchParams.get('search') || searchParams.get('q');
+    if (search && search.trim()) {
+      query.$or = [
+        { name: { $regex: search.trim(), $options: 'i' } },
+        { description: { $regex: search.trim(), $options: 'i' } },
+        { tags: { $regex: search.trim(), $options: 'i' } },
+        { sku: { $regex: search.trim(), $options: 'i' } },
+      ];
+    }
+
+    // 4. Product Type filter
     const productType = searchParams.get('productType');
     if (productType && PRODUCT_TYPE_KEYS.includes(productType)) {
-      // legacy docs have no stored value and count as apparel
       query.productType = productType === 'apparel' ? { $in: ['apparel', null] } : productType;
     }
 
+    // 5. Size filter
     const size = searchParams.get('size');
     if (size) query['variants.sizes.size'] = size;
 
+    // 6. Price range filter
     const minPrice = searchParams.get('minPrice');
     const maxPrice = searchParams.get('maxPrice');
     if (minPrice || maxPrice) {
@@ -48,7 +88,6 @@ export async function GET(req) {
     }
 
     const flag = searchParams.get('flag');
-    if (flag === 'bestseller') query.isBestSeller = true;
     if (flag === 'topseller') query.isTopSeller = true;
     if (flag === 'active') query.isActiveSeller = true;
     if (flag === 'featured') query.isFeatured = true;
@@ -119,20 +158,48 @@ export const POST = requireApprovedSeller(async (req, ctx, admin) => {
     const { body: clean, error } = sanitizeByType({ ...body, category: cat._id }, typeKey);
     if (error) return NextResponse.json({ error }, { status: 400 });
 
-    const sku = await generateSku(cat._id);
-    const slug = clean.slug ? slugify(clean.slug, { lower: true }) : slugify(clean.name, { lower: true });
-    const exists = await Product.findOne({ slug });
-    if (exists) return NextResponse.json({ error: 'A product with this slug already exists' }, { status: 409 });
+    const sku = clean.sku || (await generateSku(cat._id));
+    const slug = await generateUniqueSlug(clean.name, clean.slug);
 
-    const basePrice = clean.variants?.length
-      ? Math.min(...clean.variants.map((v) => v.price))
-      : clean.basePrice || 0;
+    // Calculate basePrice and discountPercentage
+    let basePrice = 0;
+    let discountPercentage = 0;
+
+    if (clean.variants?.length) {
+      basePrice = Math.min(...clean.variants.map((v) => Number(v.price) || 0));
+      // Calculate max discount across all variants
+      const discounts = clean.variants.map((v) => {
+        const vPrice = Number(v.price) || 0;
+        const vCompare = Number(v.compareAtPrice) || 0;
+        return vCompare > vPrice ? Math.round(((vCompare - vPrice) / vCompare) * 100) : 0;
+      });
+      discountPercentage = Math.max(0, ...discounts);
+    } else {
+      basePrice = clean.basePrice || 0;
+      discountPercentage = clean.discountPercentage || 0;
+    }
+
+    // Resolve images array
+    const images =
+      clean.images && clean.images.length > 0
+        ? clean.images
+        : clean.variants?.[0]?.images || [];
 
     // Ownership: a seller can only create products under their own account.
     // A superadmin creating a product directly leaves it unowned (null).
     const seller = admin.role === 'seller' ? admin.id : (body.seller || null);
 
-    const product = await Product.create({ ...clean, slug, sku, basePrice, seller });
+    const product = await Product.create({
+      ...clean,
+      slug,
+      sku,
+      basePrice,
+      discountPercentage,
+      images,
+      isBestSeller: Boolean(body.isBestSeller ?? clean.isBestSeller),
+      seller,
+    });
+
     return NextResponse.json({ product }, { status: 201 });
   } catch (err) {
     console.error('POST /api/products error:', err);

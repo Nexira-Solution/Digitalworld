@@ -12,7 +12,22 @@ export const GET = requireAdmin(async (req, ctx, admin) => {
   const query = admin.role === 'superadmin' ? {} : { seller: admin.id };
 
   const search = searchParams.get('search');
-  if (search) query.name = { $regex: search, $options: 'i' };
+  if (search && search.trim()) {
+    query.$or = [
+      { name: { $regex: search.trim(), $options: 'i' } },
+      { sku: { $regex: search.trim(), $options: 'i' } },
+    ];
+  }
+
+  const category = searchParams.get('category');
+  if (category) {
+    query.category = category;
+  }
+
+  const isBestSeller = searchParams.get('isBestSeller');
+  if (isBestSeller === 'true') {
+    query.isBestSeller = true;
+  }
 
   const page = Number(searchParams.get('page') || 1);
   const limit = Number(searchParams.get('limit') || 20);
