@@ -1,13 +1,13 @@
 import './globals.css';
-import localFont from 'next/font/local';
+import { Outfit } from 'next/font/google';
 import { Toaster } from 'react-hot-toast';
 import { CartProvider } from '@/components/CartContext';
 import { WishlistProvider } from '@/components/WhishlistContext';
 import { dbConnect } from '@/lib/mongodb';
 import Settings from '@/models/Settings';
 
-const outfit = localFont({
-  src: '../public/fonts/Outfit-Regular.ttf',
+const outfit = Outfit({
+  subsets: ['latin'],
   variable: '--font-outfit',
   display: 'swap',
   fallback: ['-apple-system', 'BlinkMacSystemFont', 'Segoe UI', 'Roboto', 'Helvetica', 'Arial', 'sans-serif'],
@@ -38,10 +38,18 @@ export async function generateMetadata() {
 
 export default function RootLayout({ children }) {
   return (
-    <html lang="en">
+    <html lang="en" className={outfit.variable}>
+      <head>
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
+        <link
+          href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800;900&display=swap"
+          rel="stylesheet"
+        />
+      </head>
       <body
         className={`${outfit.variable} font-sans antialiased`}
-        style={{ background: '#FAFAFA', color: '#000000', fontFamily: 'var(--font-outfit), sans-serif' }}
+        style={{ background: '#FAFAFA', color: '#000000', fontFamily: 'var(--font-outfit), Outfit, sans-serif' }}
       >
         <CartProvider>
           <WishlistProvider>
@@ -56,7 +64,7 @@ export default function RootLayout({ children }) {
           position="top-center"
           toastOptions={{
             style: {
-              fontFamily: 'var(--font-outfit), sans-serif',
+              fontFamily: 'var(--font-outfit), Outfit, sans-serif',
               background: '#FFFFFF',
               color: '#000000',
               border: '1px solid #E8E8E8',

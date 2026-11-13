@@ -12,7 +12,7 @@ const LINE = '#E8E8E8';
 const STAR_EMPTY = '#D0D0D0';
 const PAPER = '#FFFFFF';
 
-const FONT_SANS = "'Helvetica Neue', Helvetica, Arial, sans-serif";
+const FONT_SANS = "var(--font-outfit), 'Outfit', sans-serif";
 
 export default function ReviewSection({ reviews }) {
   const scrollerRef = useRef(null);

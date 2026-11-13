@@ -22,7 +22,7 @@ const ORANGE = '#F97316';
 const ORANGE_DARK = '#EA580C';
 const ORANGE_WASH = '#FFF1E6';
 const HAIRLINE = '#E8E8E8';
-const FONT_SANS = "'Helvetica Neue', Helvetica, Arial, sans-serif";
+const FONT_SANS = "var(--font-outfit), 'Outfit', sans-serif";
 
 const FEATURED_LIMIT = 6;
 const SELLER_PRODUCT_LIMIT = 24;
