@@ -36,8 +36,10 @@ module.exports = {
         }
       },
       fontFamily: {
-        display: ['var(--font-display)'],
-        body: ['var(--font-body)']
+        sans: ['var(--font-outfit)', 'Outfit', 'sans-serif'],
+        outfit: ['var(--font-outfit)', 'Outfit', 'sans-serif'],
+        display: ['var(--font-outfit)', 'Outfit', 'sans-serif'],
+        body: ['var(--font-outfit)', 'Outfit', 'sans-serif']
       },
       boxShadow: {
         soft: '0 8px 30px -8px rgba(0,0,0,0.12)'

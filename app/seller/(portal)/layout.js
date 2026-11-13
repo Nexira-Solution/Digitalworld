@@ -15,7 +15,7 @@ export default async function SellerPortalLayout({ children }) {
     redirect('/seller/login');
   }
 
-  if (admin.role === 'seller' && admin.status === 'pending') {
+  if (admin.role === 'seller' && (admin.status === 'pending' || admin.status === 'suspended')) {
     redirect('/seller/pending');
   }
 

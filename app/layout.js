@@ -1,14 +1,17 @@
 import './globals.css';
-import { Playfair_Display, Poppins } from 'next/font/google';
+import localFont from 'next/font/local';
 import { Toaster } from 'react-hot-toast';
 import { CartProvider } from '@/components/CartContext';
 import { WishlistProvider } from '@/components/WhishlistContext';
-// import BottomNav from '@/components/BottomNav';
 import { dbConnect } from '@/lib/mongodb';
 import Settings from '@/models/Settings';
 
-const display = Playfair_Display({ subsets: ['latin'], variable: '--font-display', weight: ['600', '700', '800'] });
-const body = Poppins({ subsets: ['latin'], variable: '--font-body', weight: ['300', '400', '500', '600', '700'] });
+const outfit = localFont({
+  src: '../public/fonts/Outfit-Regular.ttf',
+  variable: '--font-outfit',
+  display: 'swap',
+  fallback: ['-apple-system', 'BlinkMacSystemFont', 'Segoe UI', 'Roboto', 'Helvetica', 'Arial', 'sans-serif'],
+});
 
 export async function generateMetadata() {
   let settings = null;
@@ -37,8 +40,8 @@ export default function RootLayout({ children }) {
   return (
     <html lang="en">
       <body
-        className={`${display.variable} ${body.variable} font-body antialiased`}
-        style={{ background: '#fdf5f5' }}
+        className={`${outfit.variable} font-sans antialiased`}
+        style={{ background: '#FAFAFA', color: '#000000', fontFamily: 'var(--font-outfit), sans-serif' }}
       >
         <CartProvider>
           <WishlistProvider>
@@ -46,8 +49,6 @@ export default function RootLayout({ children }) {
 
             {/* spacer so page content isn't hidden behind the fixed mobile nav */}
             <div className="md:hidden h-16" />
-
-            {/* <BottomNav /> */}
           </WishlistProvider>
         </CartProvider>
 
@@ -55,18 +56,19 @@ export default function RootLayout({ children }) {
           position="top-center"
           toastOptions={{
             style: {
-              fontFamily: 'var(--font-body)',
-              background: '#fff',
-              color: '#8B0000',
-              border: '1.5px solid #C9A84C',
-              borderRadius: '8px',
+              fontFamily: 'var(--font-outfit), sans-serif',
+              background: '#FFFFFF',
+              color: '#000000',
+              border: '1px solid #E8E8E8',
+              borderRadius: '12px',
               fontSize: '13px',
               fontWeight: '600',
+              boxShadow: '0 4px 20px rgba(0,0,0,0.08)',
             },
             success: {
               iconTheme: {
-                primary: '#8B0000',
-                secondary: '#fff',
+                primary: '#C9A227',
+                secondary: '#FFFFFF',
               },
             },
             error: {

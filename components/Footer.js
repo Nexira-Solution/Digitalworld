@@ -1,11 +1,7 @@
 import { MapPin, Phone, Mail } from 'lucide-react';
-import { Fraunces, Inter } from 'next/font/google';
 import { dbConnect } from '@/lib/mongodb';
 import Category from '@/models/Category';
 import FooterLinks from './FooterLinks';
-
-const display = Fraunces({ subsets: ['latin'], weight: ['400'], variable: '--font-display' });
-const body = Inter({ subsets: ['latin'], weight: ['400', '500'], variable: '--font-body' });
 
 const PAPER = '#FFFFFF';
 const GOLD = '#C9A227';
@@ -19,9 +15,14 @@ const PHONE = '7010693674';
 const ADDRESS = 'Tamil Nadu';
 
 async function getCategories() {
-  await dbConnect();
-  const categories = await Category.find({}).select('name slug').lean();
-  return JSON.parse(JSON.stringify(categories));
+  try {
+    await dbConnect();
+    const categories = await Category.find({}).select('name slug').lean();
+    return JSON.parse(JSON.stringify(categories));
+  } catch (err) {
+    console.warn('[Footer getCategories warning]:', err.message);
+    return [];
+  }
 }
 
 export default async function Footer() {
@@ -33,19 +34,18 @@ export default async function Footer() {
     { label: 'Home', href: '/' },
     { label: 'Shop', href: '/products' },
     { label: 'Wishlist', href: '/wishlist' },
-    // { label: 'Contact', href: '/contact' },
   ];
 
   return (
     <footer
-      className={`${body.className} mt-16`}
-      style={{ background: PAPER, borderTop: `1px solid ${GOLD}` }}
+      className="mt-16 font-sans"
+      style={{ background: PAPER, borderTop: `1px solid ${GOLD}`, fontFamily: 'var(--font-outfit), sans-serif' }}
     >
       <div className="max-w-7xl mx-auto px-4 py-14 grid grid-cols-1 sm:grid-cols-12 gap-10 sm:gap-8">
 
         {/* Brand column */}
         <div className="sm:col-span-4">
-          <h3 className={`${display.className} text-2xl leading-tight mb-4`} style={{ color: INK, fontWeight: 400 }}>
+          <h3 className="text-2xl font-bold leading-tight mb-4" style={{ color: INK }}>
             {BRAND}
           </h3>
 

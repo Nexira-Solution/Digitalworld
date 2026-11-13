@@ -152,7 +152,7 @@ export default function RelatedProductsCarousel({
               key={p._id || p.id || idx}
               className="w-[85%] sm:w-[calc(50%-10px)] lg:w-[calc(25%-15px)] shrink-0 snap-start flex flex-col"
             >
-              <ProductCard product={p} index={idx} compactCart={true} />
+              <ProductCard product={p} index={idx} />
             </div>
           ))}
         </div>

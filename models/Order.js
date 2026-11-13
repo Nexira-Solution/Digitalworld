@@ -56,7 +56,9 @@ const OrderSchema = new mongoose.Schema(
     subtotal: Number,
     discount: { type: Number, default: 0 },
     couponCode: { type: String, default: '' },
+    couponDiscount: { type: Number, default: 0 },
     shippingFee: { type: Number, default: 0 },
+    taxAmount: { type: Number, default: 0 },
     total: Number,
     paymentMethod: { type: String, enum: ['razorpay', 'cod'], default: 'razorpay' },
     paymentStatus: { type: String, enum: ['pending', 'paid', 'failed', 'refunded'], default: 'pending' },
@@ -64,13 +66,41 @@ const OrderSchema = new mongoose.Schema(
     razorpayPaymentId: String,
     status: {
       type: String,
-      enum: ['placed', 'confirmed', 'packed', 'shipped', 'delivered', 'cancelled', 'returned'],
-      default: 'placed'
+      enum: [
+        'placed',
+        'confirmed',
+        'processing',
+        'packed',
+        'shipped',
+        'out_for_delivery',
+        'delivered',
+        'cancelled',
+        'return_requested',
+        'returned',
+        'refund_initiated',
+        'refunded',
+      ],
+      default: 'placed',
     },
+    estimatedDelivery: {
+      minDays: { type: Number, default: 5 },
+      maxDays: { type: Number, default: 6 },
+      formattedRange: { type: String, default: '5 - 6 Days' },
+    },
+    trackingEvents: [
+      {
+        _id: false,
+        status: { type: String, required: true },
+        title: { type: String, required: true },
+        description: { type: String, default: '' },
+        location: { type: String, default: '' },
+        timestamp: { type: Date, default: Date.now },
+      },
+    ],
     courier: {
       partner: { type: String, default: '' },
       trackingId: { type: String, default: '' },
-      awbNumber: { type: String, default: '' }
+      awbNumber: { type: String, default: '' },
     },
     notes: { type: String, default: '' }
   },

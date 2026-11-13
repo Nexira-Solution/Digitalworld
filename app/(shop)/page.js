@@ -63,7 +63,7 @@ async function getData(sellerParam) {
 
 export default async function HomePage({ searchParams }) {
   const sp = (await searchParams) || {};
-  const { selected, banners, products, combos, categories, reviews } = await getData(sp.seller);
+  const { selected, banners, products, combos, categories, reviews, dbError } = await getData(sp.seller);
 
   const plainBanners = JSON.parse(JSON.stringify(banners));
   const plainProducts = JSON.parse(JSON.stringify(products));
