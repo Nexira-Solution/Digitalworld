@@ -1,3 +1,4 @@
+import Link from 'next/link';
 import ProductForm from '@/components/seller/ProductForm';
 
 const INK = '#000000';
@@ -15,13 +16,13 @@ export default function AddSellerProductPage() {
             Create a new product listing with variants, pricing and pack sizes.
           </p>
         </div>
-        <a
+        <Link
           href="/seller/products"
           className="text-xs font-semibold px-4 py-2 border border-[#E8E8E8] rounded hover:bg-neutral-50 transition-colors"
           style={{ color: INK }}
         >
           ← Back to Products
-        </a>
+        </Link>
       </div>
       <ProductForm />
     </div>

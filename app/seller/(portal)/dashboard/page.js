@@ -205,7 +205,7 @@ export default function SellerDashboardPage() {
             </button>
 
             <Link
-              href="/seller/products/new"
+              href="/seller/products/add"
               className={`px-5 py-3 rounded-2xl text-xs font-bold transition-all shadow-md flex items-center gap-2 active:scale-95 ${
                 isPending || isRejected
                   ? 'bg-neutral-800 text-neutral-500 cursor-not-allowed border border-neutral-700'
@@ -757,7 +757,7 @@ export default function SellerDashboardPage() {
               When shoppers purchase items from your inventory, live orders will appear here automatically with 1-click fulfillment.
             </p>
             <Link
-              href="/seller/products/new"
+              href="/seller/products/add"
               className="mt-3 px-5 py-2.5 rounded-xl text-xs font-bold bg-[#0F172A] text-white hover:bg-neutral-800 transition-all shadow-xs"
             >
               List Products Now
