@@ -33,14 +33,13 @@ const ADMIN_NAV = [
 
 // Seller nav — scoped to their own business, under /seller/*
 const SELLER_NAV = [
-  { href: '/seller/dashboard',    label: 'Overview',         icon: LayoutDashboard },
-  { href: '/seller/products',     label: 'Inventory',        icon: Package },
-  { href: '/seller/products/add', label: 'Add Product',      icon: PackagePlus },
-  { href: '/seller/orders',       label: 'Orders',           icon: ShoppingCart },
-  { href: '/seller/combos',       label: 'Combo Bundles',    icon: Layers },
-  { href: '/seller/banners',      label: 'Store Banners',    icon: ImageIcon },
-  { href: '/seller/profile',      label: 'Business Profile', icon: User },
-  { href: '/seller/settings',     label: 'Settings',         icon: SettingsIcon },
+  { href: '/seller/dashboard', label: 'Overview',         icon: LayoutDashboard },
+  { href: '/seller/products',  label: 'Products',         icon: Package },
+  { href: '/seller/orders',    label: 'Orders',           icon: ShoppingCart },
+  { href: '/seller/combos',    label: 'Combo Bundles',    icon: Layers },
+  { href: '/seller/banners',   label: 'Store Banners',    icon: ImageIcon },
+  { href: '/seller/profile',   label: 'Business Profile', icon: User },
+  { href: '/seller/settings',  label: 'Settings',         icon: SettingsIcon },
 ];
 
 export default function AdminShell({ admin, navSet = 'admin', children }) {
@@ -107,15 +106,7 @@ export default function AdminShell({ admin, navSet = 'admin', children }) {
           {/* Navigation Links */}
           <nav className="p-3 space-y-1 overflow-y-auto max-h-[calc(100vh-140px)]">
             {nav.map(({ href, label, icon: Icon }) => {
-              const isExact = pathname === href;
-              const isChild = href !== homeHref && pathname.startsWith(href + '/');
-              const hasMoreSpecificMatch = nav.some(
-                (other) =>
-                  other.href !== href &&
-                  other.href.startsWith(href) &&
-                  (pathname === other.href || pathname.startsWith(other.href + '/'))
-              );
-              const active = isExact || (isChild && !hasMoreSpecificMatch);
+              const active = pathname === href || (href !== homeHref && (pathname === href || pathname.startsWith(href + '/')));
               return (
                 <Link
                   key={href}

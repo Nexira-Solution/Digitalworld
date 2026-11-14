@@ -2,8 +2,11 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import toast from 'react-hot-toast';
+import { Plus, Pencil, X, Loader2 } from 'lucide-react';
 import { getType } from '@/lib/productTypes';
 import ProductTypeFields from '@/components/ProductTypeFields';
+import AddCategoryModal from '@/components/seller/AddCategoryModal';
 
 const INK = '#000000';
 const INK_SOFT = '#6B6B6B';
@@ -53,11 +56,22 @@ export default function ProductForm({ productId, initialProduct }) {
   const [pantOptions, setPantOptions] = useState([]);
   const [shawlOptions, setShawlOptions] = useState([]);
 
+  // Category modal state (Title & Image only)
+  const [showCategoryModal, setShowCategoryModal] = useState(false);
+  const [categoryModalData, setCategoryModalData] = useState(null);
+
   useEffect(() => {
     fetch('/api/categories')
       .then((r) => r.json())
-      .then((d) => setCategories(d.topLevel || []))
+      .then((d) => setCategories(d.topLevel || d.categories || []))
       .catch(() => {});
+
+    if (typeof window !== 'undefined') {
+      const sp = new URLSearchParams(window.location.search);
+      if (sp.get('openCategory') === 'true') {
+        openCreateCategory();
+      }
+    }
   }, []);
 
   useEffect(() => {
@@ -169,6 +183,41 @@ export default function ProductForm({ productId, initialProduct }) {
   }
   function removeAddon(setter, i) {
     setter((list) => list.filter((_, idx) => idx !== i));
+  }
+
+  function openCreateCategory() {
+    setCategoryModalData(null);
+    setShowCategoryModal(true);
+  }
+
+  function openEditCategory() {
+    if (!form.category) return;
+    const allFlat = flattenCategoryOptions();
+    const curr = allFlat.find((c) => String(c.id) === String(form.category));
+    const cat =
+      categories.find((c) => String(c._id) === String(form.category)) ||
+      categories.flatMap((c) => c.subcategories || []).find((s) => String(s._id) === String(form.category));
+
+    setCategoryModalData({
+      _id: cat?._id || curr?.id || form.category,
+      name: cat?.name || curr?.label?.split(' — ')?.pop() || '',
+      image: cat?.image || '',
+    });
+    setShowCategoryModal(true);
+  }
+
+  async function handleCategorySuccess(savedCat) {
+    try {
+      const res = await fetch('/api/categories');
+      const data = await res.json();
+      setCategories(data.topLevel || data.categories || []);
+      const savedCatId = savedCat?._id || categoryModalData?._id;
+      if (savedCatId) {
+        handleCategoryChange(savedCatId);
+      }
+    } catch {
+      // keep existing
+    }
   }
 
   // Flat list for the <select>. Each entry carries its product type; a
@@ -344,7 +393,33 @@ export default function ProductForm({ productId, initialProduct }) {
           />
         </Field>
 
-        <Field label="Category">
+        <div>
+          <div className="flex items-center justify-between mb-1.5 flex-wrap gap-2">
+            <label className="block text-[11px] tracking-[1px] uppercase font-semibold text-[#6B6B6B]">
+              Category <span className="text-red-500">*</span>
+            </label>
+            <div className="flex items-center gap-2">
+              {form.category && (
+                <button
+                  type="button"
+                  onClick={openEditCategory}
+                  className="text-xs font-semibold text-[#C9A227] hover:underline flex items-center gap-1"
+                >
+                  <Pencil size={12} />
+                  <span>Edit Category Image / Details</span>
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={openCreateCategory}
+                className="text-xs font-semibold text-[#0F172A] hover:text-[#C9A227] flex items-center gap-1 transition-colors px-2.5 py-1 rounded-md bg-[#FAF7EE] border border-[#E7E2D6]"
+              >
+                <Plus size={13} className="text-[#C9A227]" />
+                <span>+ Add New Category</span>
+              </button>
+            </div>
+          </div>
+
           <select
             value={form.category}
             onChange={(e) => handleCategoryChange(e.target.value)}
@@ -354,15 +429,31 @@ export default function ProductForm({ productId, initialProduct }) {
           >
             <option value="">Select a category</option>
             {categoryOptions.map((c) => (
-              <option key={c.id} value={c.id}>{c.label}</option>
+              <option key={c.id} value={c.id}>
+                {c.label}
+              </option>
             ))}
           </select>
-          <p className="text-[11px] mt-1" style={{ color: INK_SOFT }}>
-            {ready
-              ? `Product type: ${type.label}`
-              : 'Pick a category — the fields below adapt to the kind of product.'}
-          </p>
-        </Field>
+
+          <div className="flex items-center justify-between mt-1 text-[11px] text-[#6B6B6B] flex-wrap gap-1">
+            <span>
+              {ready
+                ? `Product type: ${type.label}`
+                : 'Pick a category — or click "+ Add New Category" to create one with a circular showcase image.'}
+            </span>
+            <span className="text-[#C9A227] font-medium">
+              Top-level categories showcase in &quot;Shop by Category&quot; on Home page
+            </span>
+          </div>
+
+          {/* Add / Edit Category Modal (Title and Image only) */}
+          <AddCategoryModal
+            isOpen={showCategoryModal}
+            onClose={() => setShowCategoryModal(false)}
+            onSuccess={handleCategorySuccess}
+            initialData={categoryModalData}
+          />
+        </div>
 
         <Field label="Description">
           <textarea

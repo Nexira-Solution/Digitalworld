@@ -17,7 +17,7 @@ const r2 = new S3Client({
 });
 
 const MAX_SIZE = 4 * 1024 * 1024; // stays under Vercel's ~4.5 MB body limit
-const ALLOWED_FOLDERS = ['products', 'size-charts', 'addons', 'uploads'];
+const ALLOWED_FOLDERS = ['products', 'size-charts', 'addons', 'uploads', 'categories'];
 
 // R2 stores whatever you give it, so detect the real type from the file's
 // first bytes instead of trusting the client-supplied file.type.

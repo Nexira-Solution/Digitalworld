@@ -5,6 +5,7 @@ import toast from 'react-hot-toast';
 import { Plus, Trash2, Pencil, X, Upload, Loader2, ArrowUp, ArrowDown, CornerDownRight } from 'lucide-react';
 import { getType } from '@/lib/productTypes';
 import CategoryTypeSelect from '@/components/CategoryTypeSelect';
+import AddCategoryModal from '@/components/seller/AddCategoryModal';
 
 const emptyForm = {
   name: '', slug: '', image: '', description: '', sizes: '', sortOrder: 0,
@@ -76,6 +77,8 @@ export default function AdminCategoriesPage() {
   const [preview, setPreview] = useState('');
   const [sizeChartUploading, setSizeChartUploading] = useState(false);
   const [reordering, setReordering] = useState(false);
+  const [showQuickModal, setShowQuickModal] = useState(false);
+  const [quickModalData, setQuickModalData] = useState(null);
   const fileRef = useRef();
   const sizeChartFileRef = useRef();
 
@@ -279,7 +282,13 @@ export default function AdminCategoriesPage() {
     <div>
       <div className="flex items-center justify-between mb-5">
         <h1 className="font-display text-2xl font-bold text-brand-magenta">Categories</h1>
-        <button onClick={startNew} className="btn-primary flex items-center gap-1 text-sm">
+        <button
+          onClick={() => {
+            setQuickModalData(null);
+            setShowQuickModal(true);
+          }}
+          className="btn-primary flex items-center gap-1 text-sm"
+        >
           <Plus size={16} /> Add Category
         </button>
       </div>
@@ -422,7 +431,10 @@ export default function AdminCategoriesPage() {
                 onMoveDown={() => move(topLevel, cIndex, 'down')}
                 disableUp={cIndex === 0 || reordering}
                 disableDown={cIndex === topLevel.length - 1 || reordering}
-                onEdit={() => startEdit(c)}
+                onEdit={() => {
+                  setQuickModalData({ _id: c._id, name: c.name, image: c.image || '' });
+                  setShowQuickModal(true);
+                }}
                 onDelete={() => remove(c._id)}
                 onAddSub={() => startNewSub(c._id)}
               />
@@ -435,7 +447,10 @@ export default function AdminCategoriesPage() {
                   onMoveDown={() => move(children, i, 'down')}
                   disableUp={i === 0 || reordering}
                   disableDown={i === children.length - 1 || reordering}
-                  onEdit={() => startEdit(child)}
+                  onEdit={() => {
+                    setQuickModalData({ _id: child._id, name: child.name, image: child.image || '' });
+                    setShowQuickModal(true);
+                  }}
                   onDelete={() => remove(child._id)}
                 />
               ))}
@@ -446,6 +461,13 @@ export default function AdminCategoriesPage() {
           <p className="text-center text-brand-ink/40 py-10">No categories yet.</p>
         )}
       </div>
+
+      <AddCategoryModal
+        isOpen={showQuickModal}
+        onClose={() => setShowQuickModal(false)}
+        onSuccess={() => load()}
+        initialData={quickModalData}
+      />
     </div>
   );
 }

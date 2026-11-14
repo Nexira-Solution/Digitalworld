@@ -1,68 +1,80 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
-import { Search, Plus, Trash2, Edit3, Crown, Eye, Filter } from 'lucide-react';
+import {
+  Search,
+  Plus,
+  Trash2,
+  Pencil,
+  Eye,
+  Crown,
+  UploadCloud,
+  X,
+  Loader2,
+  FolderPlus,
+} from 'lucide-react';
 import toast from 'react-hot-toast';
-
-const INK = '#000000';
-const INK_SOFT = '#6B6B6B';
-const LINE = '#E8E8E8';
-const PAPER = '#FFFFFF';
+import { formatINR } from '@/lib/utils';
+import AddCategoryModal from '@/components/seller/AddCategoryModal';
 
 export default function SellerProductsPage() {
   const router = useRouter();
   const [products, setProducts] = useState([]);
   const [categories, setCategories] = useState([]);
-  const [selectedCategory, setSelectedCategory] = useState('');
-  const [total, setTotal] = useState(0);
-  const [page, setPage] = useState(1);
-  const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
+  const [deletingId, setDeletingId] = useState(null);
 
-  // 1. Fetch available categories for filter dropdown
-  useEffect(() => {
-    fetch('/api/categories')
-      .then((r) => r.json())
-      .then((d) => setCategories(d.topLevel || []))
-      .catch(() => {});
-  }, []);
+  const [search, setSearch] = useState('');
+  const [categoryFilter, setCategoryFilter] = useState('all');
+  const [sortBy, setSortBy] = useState('newest');
+  const [showAddCategoryModal, setShowAddCategoryModal] = useState(false);
 
-  // 2. Load seller products
-  async function load(p = page, q = search, cat = selectedCategory) {
-    setLoading(true);
-    setError('');
-    const params = new URLSearchParams({ page: String(p), limit: '20' });
-    if (q) params.set('search', q);
-    if (cat) params.set('category', cat);
-
+  async function handleCategoryCreated(newCat) {
     try {
-      const res = await fetch(`/api/seller/products?${params}`);
+      const res = await fetch('/api/categories');
+      const data = await res.json();
+      setCategories(data.categories || data.topLevel || []);
+      if (newCat?._id) {
+        setCategoryFilter(newCat._id);
+      }
+    } catch {
+      // keep existing
+    }
+  }
+
+  async function load() {
+    setLoading(true);
+    try {
+      const res = await fetch('/api/seller/products?limit=200');
       if (res.status === 401) {
         router.push('/seller/login');
         return;
       }
       const data = await res.json();
       setProducts(data.products || []);
-      setTotal(data.total || 0);
     } catch {
-      setError('Failed to load seller inventory.');
+      toast.error('Failed to load products');
     } finally {
       setLoading(false);
     }
   }
 
   useEffect(() => {
-    load(1, search, selectedCategory);
-  }, [selectedCategory]); // eslint-disable-line
+    load();
+    fetch('/api/categories')
+      .then((r) => r.json())
+      .then((d) => setCategories(d.categories || d.topLevel || []))
+      .catch(() => {});
+  }, []);
 
   async function onDelete(id, name) {
     if (!confirm(`Are you sure you want to delete "${name}"? This action cannot be undone.`)) {
       return;
     }
+    setDeletingId(id);
     try {
       const res = await fetch(`/api/products/${id}`, { method: 'DELETE' });
       const data = await res.json();
@@ -71,239 +83,286 @@ export default function SellerProductsPage() {
         return;
       }
       toast.success('Product deleted successfully');
-      load(page, search, selectedCategory);
+      setProducts((prev) => prev.filter((p) => p._id !== id));
     } catch {
       toast.error('Network error deleting product.');
+    } finally {
+      setDeletingId(null);
     }
   }
 
-  return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 py-8" style={{ background: PAPER }}>
-      {/* Header Bar */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8 pb-4 border-b border-[#E8E8E8]">
-        <div>
-          <h1 className="text-xl sm:text-2xl font-bold tracking-tight uppercase" style={{ color: INK }}>
-            My Products
-          </h1>
-          <p className="text-xs sm:text-sm text-[#6B6B6B] mt-1">
-            Manage your catalog inventory, pricing, pack sizes, and bestseller status.
-          </p>
-        </div>
+  const filtered = useMemo(() => {
+    let list = [...products];
 
+    // Search by product name or SKU
+    const q = search.trim().toLowerCase();
+    if (q) {
+      list = list.filter(
+        (p) =>
+          p.name?.toLowerCase().includes(q) ||
+          p.sku?.toLowerCase().includes(q)
+      );
+    }
+
+    // Filter by category
+    if (categoryFilter !== 'all') {
+      list = list.filter((p) => {
+        const catId = p.category?._id || p.category;
+        return String(catId) === String(categoryFilter);
+      });
+    }
+
+    // Sort
+    list.sort((a, b) => {
+      const aPrice = a.basePrice || a.variants?.[0]?.price || 0;
+      const bPrice = b.basePrice || b.variants?.[0]?.price || 0;
+
+      switch (sortBy) {
+        case 'category':
+          return (a.category?.name || '').localeCompare(b.category?.name || '');
+        case 'name':
+          return (a.name || '').localeCompare(b.name || '');
+        case 'priceLow':
+          return aPrice - bPrice;
+        case 'priceHigh':
+          return bPrice - aPrice;
+        case 'newest':
+        default:
+          return new Date(b.createdAt) - new Date(a.createdAt);
+      }
+    });
+
+    return list;
+  }, [products, search, categoryFilter, sortBy]);
+
+  return (
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6 sm:py-8">
+      {/* Top Action Buttons */}
+      <div className="flex items-center gap-2.5 mb-5 flex-wrap">
+        <Link
+          href="/seller/products/bulk"
+          className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg border border-[#E8E8E8] bg-white text-[#0F172A] hover:bg-neutral-50 text-xs sm:text-sm font-semibold shadow-xs transition-colors"
+        >
+          <UploadCloud size={16} />
+          <span>Bulk Add</span>
+        </Link>
+        <button
+          type="button"
+          onClick={() => setShowAddCategoryModal(true)}
+          className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg border border-[#E8E8E8] bg-white text-[#0F172A] hover:bg-neutral-50 text-xs sm:text-sm font-semibold shadow-xs transition-colors"
+        >
+          <FolderPlus size={16} className="text-[#C9A227]" />
+          <span>+ Add Category</span>
+        </button>
         <Link
           href="/seller/products/add"
-          className="inline-flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-lg text-xs font-bold tracking-wide uppercase bg-black text-white hover:bg-neutral-800 transition-all shadow-sm shrink-0"
+          className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-[#0F172A] text-white hover:bg-neutral-800 text-xs sm:text-sm font-semibold shadow-sm transition-all"
         >
-          <Plus size={15} />
+          <Plus size={16} className="text-[#C9A227]" />
           <span>Add Product</span>
         </Link>
       </div>
 
       {/* Filter and Search Bar */}
-      <div className="flex flex-col sm:flex-row gap-3 mb-6">
+      <div className="flex flex-col sm:flex-row gap-3 mb-5">
         {/* Search */}
-        <form
-          onSubmit={(e) => {
-            e.preventDefault();
-            setPage(1);
-            load(1, search, selectedCategory);
-          }}
-          className="relative flex-1"
-        >
-          <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[#888888]" />
+        <div className="relative flex-1 min-w-[220px]">
+          <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-neutral-400" />
           <input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search products by name or SKU..."
-            className="w-full pl-9 pr-4 py-2 text-sm rounded-lg border border-[#E8E8E8] outline-none focus:border-black transition-colors"
+            placeholder="Search by name or SKU..."
+            className="w-full pl-9 pr-8 py-2 text-sm rounded-lg border border-[#E8E8E8] bg-white text-[#0F172A] outline-none focus:border-[#0F172A] transition-colors shadow-xs"
           />
-        </form>
+          {search && (
+            <button
+              type="button"
+              onClick={() => setSearch('')}
+              className="absolute right-2.5 top-1/2 -translate-y-1/2 text-neutral-400 hover:text-neutral-700"
+            >
+              <X size={14} />
+            </button>
+          )}
+        </div>
 
         {/* Category Filter */}
-        <div className="sm:w-60">
-          <select
-            value={selectedCategory}
-            onChange={(e) => {
-              setSelectedCategory(e.target.value);
-              setPage(1);
-            }}
-            className="w-full px-3 py-2 text-sm rounded-lg border border-[#E8E8E8] outline-none bg-white focus:border-black cursor-pointer"
-          >
-            <option value="">All Categories</option>
-            {categories.map((c) => (
-              <option key={c._id} value={c._id}>
-                {c.name}
-              </option>
-            ))}
-          </select>
-        </div>
+        <select
+          value={categoryFilter}
+          onChange={(e) => setCategoryFilter(e.target.value)}
+          className="px-3.5 py-2 text-sm rounded-lg border border-[#E8E8E8] bg-white text-[#0F172A] outline-none cursor-pointer focus:border-[#0F172A] shadow-xs"
+        >
+          <option value="all">All Categories</option>
+          {categories.map((c) => (
+            <option key={c._id} value={c._id}>
+              {c.name}
+            </option>
+          ))}
+        </select>
+
+        {/* Sort Filter */}
+        <select
+          value={sortBy}
+          onChange={(e) => setSortBy(e.target.value)}
+          className="px-3.5 py-2 text-sm rounded-lg border border-[#E8E8E8] bg-white text-[#0F172A] outline-none cursor-pointer focus:border-[#0F172A] shadow-xs"
+        >
+          <option value="newest">Sort: Newest</option>
+          <option value="category">Sort: Category (A–Z)</option>
+          <option value="name">Sort: Name (A–Z)</option>
+          <option value="priceLow">Sort: Price (Low to High)</option>
+          <option value="priceHigh">Sort: Price (High to Low)</option>
+        </select>
       </div>
 
-      {error && (
-        <div className="mb-4 px-4 py-3 rounded-lg text-xs font-semibold bg-[#FCE8E6] text-[#B3261E]">
-          {error}
-        </div>
-      )}
-
-      {/* Products Table */}
+      {/* Products Table Card */}
       {loading ? (
-        <div className="py-12 text-center text-sm text-[#6B6B6B]">Loading your products...</div>
-      ) : products.length === 0 ? (
-        <div className="py-16 text-center border border-dashed border-[#E8E8E8] rounded-2xl">
-          <p className="text-sm font-semibold text-[#000000]">No products found</p>
-          <p className="text-xs text-[#6B6B6B] mt-1 mb-4">
-            {search || selectedCategory
-              ? 'Try adjusting your search or category filters'
-              : 'Start by adding your first product to the catalog'}
-          </p>
-          <Link
-            href="/seller/products/add"
-            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-semibold bg-black text-white hover:bg-neutral-800 transition-all"
-          >
-            <Plus size={14} />
-            <span>Add Product</span>
-          </Link>
+        <div className="py-16 text-center text-sm text-[#64748B] bg-white rounded-xl border border-[#E8E8E8]">
+          <Loader2 size={24} className="animate-spin mx-auto mb-2 text-[#0F172A]" />
+          <span>Loading your products...</span>
         </div>
       ) : (
-        <div className="overflow-x-auto rounded-xl border border-[#E8E8E8]">
-          <table className="w-full text-left text-xs border-collapse">
-            <thead className="bg-[#FAF7F0] border-b border-[#E8E8E8]">
-              <tr>
-                <th className="py-3 px-4 font-semibold text-[#1A1A1A]">Product</th>
-                <th className="py-3 px-3 font-semibold text-[#1A1A1A]">SKU</th>
-                <th className="py-3 px-3 font-semibold text-[#1A1A1A]">Category</th>
-                <th className="py-3 px-3 font-semibold text-[#1A1A1A]">Selling Price</th>
-                <th className="py-3 px-3 font-semibold text-[#1A1A1A]">Original Price</th>
-                <th className="py-3 px-3 font-semibold text-[#1A1A1A]">Discount</th>
-                <th className="py-3 px-3 font-semibold text-[#1A1A1A]">Stock Status</th>
-                <th className="py-3 px-3 font-semibold text-[#1A1A1A]">Badge</th>
-                <th className="py-3 px-4 font-semibold text-right text-[#1A1A1A]">Actions</th>
+        <div className="card-soft overflow-x-auto rounded-xl border border-[#E8E8E8] bg-white shadow-xs">
+          <table className="w-full text-sm text-left border-collapse">
+            <thead>
+              <tr className="border-b border-[#E8E8E8] text-[#64748B] text-xs font-semibold bg-[#FAFAFA]">
+                <th className="p-3.5 font-semibold">Product</th>
+                <th className="p-3.5 font-semibold">SKU</th>
+                <th className="p-3.5 font-semibold">Category</th>
+                <th className="p-3.5 font-semibold">Price</th>
+                <th className="p-3.5 font-semibold">Variants</th>
+                <th className="p-3.5 font-semibold">Status</th>
+                <th className="p-3.5 font-semibold text-right">Actions</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-[#E8E8E8]">
-              {products.map((p) => {
+            <tbody className="divide-y divide-[#F0F0F0]">
+              {filtered.map((p) => {
                 const firstVariant = p.variants?.[0] || {};
                 const imageSrc =
-                  firstVariant.images?.[0] || p.images?.[0] || p.image || '/images/placeholder.svg';
+                  firstVariant.images?.[0] ||
+                  p.images?.[0] ||
+                  p.image ||
+                  '/images/placeholder.svg';
 
-                // Calculate total stock across all variants & pack sizes
+                const sellingPrice = p.basePrice || firstVariant.price || 0;
+                const originalPrice = firstVariant.compareAtPrice || 0;
+
                 const totalStock = (p.variants || []).reduce(
                   (sum, v) => sum + (v.sizes || []).reduce((s, sz) => s + (sz.stock || 0), 0),
                   0
                 );
 
-                const sellingPrice = p.basePrice || firstVariant.price || 0;
-                const originalPrice = firstVariant.compareAtPrice || 0;
-                const discountPct =
-                  originalPrice > sellingPrice
-                    ? Math.round(((originalPrice - sellingPrice) / originalPrice) * 100)
-                    : p.discountPercentage || 0;
-
                 return (
-                  <tr key={p._id} className="hover:bg-[#FAF8F5] transition-colors">
-                    {/* Image & Name */}
-                    <td className="py-3 px-4">
+                  <tr key={p._id} className="hover:bg-[#FAF9F5] transition-colors">
+                    {/* Product */}
+                    <td className="p-3.5">
                       <div className="flex items-center gap-3">
-                        <div className="relative w-12 h-12 rounded-lg overflow-hidden bg-neutral-100 border border-[#E8E8E8] shrink-0">
+                        <div className="relative w-10 h-10 rounded-lg overflow-hidden bg-neutral-100 border border-[#E8E8E8] shrink-0">
                           <Image
                             src={imageSrc}
-                            alt={p.name}
+                            alt={p.name || 'Product'}
                             fill
                             unoptimized
                             className="object-cover"
                           />
                         </div>
-                        <div className="max-w-[200px]">
-                          <p className="font-semibold text-sm text-[#000000] truncate" title={p.name}>
+                        <div className="min-w-0 max-w-xs">
+                          <p className="font-semibold text-sm text-[#0F172A] truncate" title={p.name}>
                             {p.name}
                           </p>
-                          <Link
-                            href={`/product/${p.slug}`}
-                            target="_blank"
-                            className="inline-flex items-center gap-0.5 text-[11px] text-[#C9A227] hover:underline"
-                          >
-                            <span>View Storefront</span>
-                            <Eye size={11} />
-                          </Link>
+                          {p.slug && (
+                            <Link
+                              href={`/product/${p.slug}`}
+                              target="_blank"
+                              className="inline-flex items-center gap-1 text-[11px] text-[#C9A227] hover:underline mt-0.5"
+                            >
+                              <span>View Storefront</span>
+                              <Eye size={11} />
+                            </Link>
+                          )}
                         </div>
                       </div>
                     </td>
 
                     {/* SKU */}
-                    <td className="py-3 px-3 font-mono text-[#5E5E5E]">{p.sku || '—'}</td>
+                    <td className="p-3.5">
+                      <span className="font-mono text-xs text-[#64748B]">
+                        {p.sku || <span className="text-[#A0A0A0]">—</span>}
+                      </span>
+                    </td>
 
                     {/* Category */}
-                    <td className="py-3 px-3 text-[#1A1A1A]">{p.category?.name || '—'}</td>
-
-                    {/* Selling Price */}
-                    <td className="py-3 px-3 font-bold text-[#000000]">₹{sellingPrice}</td>
-
-                    {/* Original Price */}
-                    <td className="py-3 px-3 text-[#6B6B6B]">
-                      {originalPrice > sellingPrice ? (
-                        <span className="line-through">₹{originalPrice}</span>
-                      ) : (
-                        '—'
-                      )}
+                    <td className="p-3.5 text-sm text-[#0F172A]">
+                      {p.category?.name || <span className="text-[#A0A0A0]">—</span>}
                     </td>
 
-                    {/* Discount % */}
-                    <td className="py-3 px-3">
-                      {discountPct > 0 ? (
-                        <span className="inline-block px-2 py-0.5 rounded-full text-[10px] font-bold bg-[#F6EFD9] text-[#000000]">
-                          {discountPct}% OFF
+                    {/* Price */}
+                    <td className="p-3.5">
+                      <div className="text-sm">
+                        <span className="font-semibold text-[#0F172A]">
+                          {formatINR(sellingPrice)}
                         </span>
-                      ) : (
-                        <span className="text-[#888888]">0%</span>
-                      )}
+                        {originalPrice > sellingPrice && (
+                          <span className="text-xs text-[#94A3B8] line-through ml-1.5">
+                            {formatINR(originalPrice)}
+                          </span>
+                        )}
+                      </div>
                     </td>
 
-                    {/* Stock Status */}
-                    <td className="py-3 px-3">
-                      {totalStock <= 0 ? (
-                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-red-100 text-red-700">
-                          Out of Stock
-                        </span>
-                      ) : totalStock < 5 ? (
-                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800">
-                          Only {totalStock} Left
-                        </span>
-                      ) : (
-                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-50 text-emerald-700">
-                          In Stock ({totalStock})
-                        </span>
-                      )}
+                    {/* Variants */}
+                    <td className="p-3.5">
+                      <span className="inline-block text-xs font-semibold px-2.5 py-0.5 rounded-md bg-[#FAF7EE] text-[#0F172A] border border-[#E7E2D6]">
+                        {p.variants?.length || 1}
+                      </span>
                     </td>
 
-                    {/* Best Seller Status */}
-                    <td className="py-3 px-3">
-                      {p.isBestSeller ? (
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-[#C9A227] text-black">
-                          <Crown size={10} className="fill-black" />
-                          <span>Best Seller</span>
+                    {/* Status */}
+                    <td className="p-3.5">
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span
+                          className={`px-2.5 py-0.5 rounded-full text-[11px] font-semibold ${
+                            p.isActive
+                              ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                              : 'bg-neutral-100 text-neutral-600'
+                          }`}
+                        >
+                          {p.isActive ? 'Active' : 'Hidden'}
                         </span>
-                      ) : (
-                        <span className="text-[#888888]">—</span>
-                      )}
+                        {totalStock === 0 && (
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-rose-50 text-rose-700 border border-rose-200">
+                            Out of Stock
+                          </span>
+                        )}
+                        {p.isBestSeller && (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-[#FAF0D4] text-[#8C6D1F]">
+                            <Crown size={10} className="fill-[#8C6D1F]" />
+                            <span>Best Seller</span>
+                          </span>
+                        )}
+                      </div>
                     </td>
 
                     {/* Actions */}
-                    <td className="py-3 px-4 text-right">
-                      <div className="flex items-center justify-end gap-2">
+                    <td className="p-3.5 text-right">
+                      <div className="flex items-center justify-end gap-1.5">
                         <Link
                           href={`/seller/products/edit/${p._id}`}
-                          className="p-1.5 rounded hover:bg-neutral-200 text-[#000000] transition-colors"
+                          className="p-1.5 rounded-lg text-[#0F172A] hover:bg-neutral-200 transition-colors"
                           title="Edit Product"
                         >
-                          <Edit3 size={15} />
+                          <Pencil size={15} />
                         </Link>
                         <button
                           type="button"
+                          disabled={deletingId === p._id}
                           onClick={() => onDelete(p._id, p.name)}
-                          className="p-1.5 rounded hover:bg-red-50 text-[#B3261E] transition-colors"
+                          className="p-1.5 rounded-lg text-rose-600 hover:bg-rose-50 transition-colors disabled:opacity-50"
                           title="Delete Product"
                         >
-                          <Trash2 size={15} />
+                          {deletingId === p._id ? (
+                            <Loader2 size={15} className="animate-spin text-rose-600" />
+                          ) : (
+                            <Trash2 size={15} />
+                          )}
                         </button>
                       </div>
                     </td>
@@ -312,36 +371,47 @@ export default function SellerProductsPage() {
               })}
             </tbody>
           </table>
+
+          {filtered.length === 0 && (
+            <div className="py-14 text-center px-4">
+              <p className="text-sm font-semibold text-[#0F172A]">
+                {products.length === 0
+                  ? 'No products yet. Add your first product!'
+                  : 'No products match your filters.'}
+              </p>
+              {products.length === 0 ? (
+                <div className="mt-3">
+                  <Link
+                    href="/seller/products/add"
+                    className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-bold bg-[#0F172A] text-white hover:bg-neutral-800 transition-all shadow-xs"
+                  >
+                    <Plus size={15} className="text-[#C9A227]" />
+                    <span>Add Product</span>
+                  </Link>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSearch('');
+                    setCategoryFilter('all');
+                  }}
+                  className="mt-2 text-xs font-semibold text-[#C9A227] hover:underline"
+                >
+                  Clear all filters
+                </button>
+              )}
+            </div>
+          )}
         </div>
       )}
 
-      {/* Pagination */}
-      {total > 20 && (
-        <div className="mt-6 flex items-center justify-between text-xs text-[#6B6B6B]">
-          <span>
-            Showing {(page - 1) * 20 + 1} to {Math.min(page * 20, total)} of {total} products
-          </span>
-          <div className="flex gap-1.5">
-            {Array.from({ length: Math.ceil(total / 20) }).map((_, i) => (
-              <button
-                key={i}
-                type="button"
-                onClick={() => {
-                  setPage(i + 1);
-                  load(i + 1, search, selectedCategory);
-                }}
-                className={`w-8 h-8 rounded-lg flex items-center justify-center font-semibold transition-all ${
-                  page === i + 1
-                    ? 'bg-black text-white'
-                    : 'border border-[#E8E8E8] text-black hover:bg-neutral-50'
-                }`}
-              >
-                {i + 1}
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
+      {/* Add Category Modal (Title and Image only) */}
+      <AddCategoryModal
+        isOpen={showAddCategoryModal}
+        onClose={() => setShowAddCategoryModal(false)}
+        onSuccess={handleCategoryCreated}
+      />
     </div>
   );
 }

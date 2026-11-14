@@ -3,9 +3,10 @@
 import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import toast from 'react-hot-toast';
-import { Plus, Trash2, Upload, Loader2, X } from 'lucide-react';
+import { Plus, Trash2, Upload, Loader2, X, Pencil } from 'lucide-react';
 import { getType } from '@/lib/productTypes';
 import ProductTypeFields from '@/components/ProductTypeFields';
+import AddCategoryModal from '@/components/seller/AddCategoryModal';
 
 // Design tokens — same white/peach minimalist system as the rest of the site.
 const INK = '#241B21';
@@ -280,9 +281,44 @@ export default function ProductForm({ initial, productId }) {
   const variantFileRefs = useRef({});
   const [variantUploading, setVariantUploading] = useState(null);
 
+  // Category modal state (Title & Image only)
+  const [showCategoryModal, setShowCategoryModal] = useState(false);
+  const [categoryModalData, setCategoryModalData] = useState(null);
+
   useEffect(() => {
-    fetch('/api/categories').then((r) => r.json()).then((d) => setCategories(d.categories || []));
+    fetch('/api/categories').then((r) => r.json()).then((d) => setCategories(d.categories || d.topLevel || []));
   }, []);
+
+  function openCreateCategory() {
+    setCategoryModalData(null);
+    setShowCategoryModal(true);
+  }
+
+  function openEditCategory() {
+    if (!catId) return;
+    const cat = categories.find((c) => String(c._id) === String(catId));
+    setCategoryModalData({
+      _id: cat?._id || catId,
+      name: cat?.name || '',
+      image: cat?.image || '',
+    });
+    setShowCategoryModal(true);
+  }
+
+  async function handleCategorySuccess(savedCat) {
+    try {
+      const res = await fetch('/api/categories');
+      const data = await res.json();
+      const newCats = data.categories || data.topLevel || [];
+      setCategories(newCats);
+      const targetId = savedCat?._id || categoryModalData?._id;
+      if (targetId) {
+        handleCategoryChange(targetId);
+      }
+    } catch {
+      // keep existing
+    }
+  }
 
   // ---- product type, derived from the selected category ----
   const catId = form.category?._id || form.category || '';
@@ -564,7 +600,30 @@ export default function ProductForm({ initial, productId }) {
             />
           </div>
           <div>
-            <label style={labelStyle}>Category *</label>
+            <div className="flex items-center justify-between mb-1.5 flex-wrap gap-2">
+              <label style={labelStyle}>Category *</label>
+              <div className="flex items-center gap-2">
+                {catId && (
+                  <button
+                    type="button"
+                    onClick={openEditCategory}
+                    className="text-xs font-semibold text-[#C9A227] hover:underline flex items-center gap-1"
+                  >
+                    <Pencil size={12} />
+                    <span>Edit Category Image / Details</span>
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={openCreateCategory}
+                  className="text-xs font-semibold text-[#0F172A] hover:text-[#C9A227] flex items-center gap-1 transition-colors px-2.5 py-1 rounded-md bg-[#FAF7EE] border border-[#E7E2D6]"
+                >
+                  <Plus size={13} className="text-[#C9A227]" />
+                  <span>+ Add New Category</span>
+                </button>
+              </div>
+            </div>
+
             <select
               required
               style={inputStyle}
@@ -579,8 +638,15 @@ export default function ProductForm({ initial, productId }) {
             <p style={{ ...labelStyle, fontWeight: '400', marginTop: '4px' }}>
               {ready
                 ? `Product type: ${type.label}`
-                : 'Pick a category — the fields below adapt to the kind of product.'}
+                : 'Pick a category — or click "+ Add New Category" to create one with a circular showcase image.'}
             </p>
+
+            <AddCategoryModal
+              isOpen={showCategoryModal}
+              onClose={() => setShowCategoryModal(false)}
+              onSuccess={handleCategorySuccess}
+              initialData={categoryModalData}
+            />
           </div>
 
           {ready && type.showFabric && (

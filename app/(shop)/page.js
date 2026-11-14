@@ -56,7 +56,7 @@ async function getData(sellerParam) {
     Product.find({ isActive: true, isActiveSeller: true }).sort({ createdAt: -1 }).limit(FEATURED_LIMIT).lean(),
     Review.find({ isApproved: true, isFeatured: true }).populate('product', 'name').limit(10).lean(),
     Combo.find({ isActive: true }).limit(6).lean(),
-    Category.find({ isActive: true, parent: null }).limit(10).lean(),
+    Category.find({ isActive: true, parent: null }).sort({ sortOrder: 1, createdAt: 1 }).limit(12).lean(),
   ]);
   return { selected: null, banners, products, combos, categories, reviews };
 }
