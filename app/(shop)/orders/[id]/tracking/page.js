@@ -1,2 +1,2 @@
-export { default } from '../../account/orders/[orderId]/tracking/page';
+export { default } from '@/app/(shop)/account/orders/[orderId]/tracking/page';
 
