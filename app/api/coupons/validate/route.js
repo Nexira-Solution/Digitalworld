@@ -4,8 +4,18 @@ import { NextResponse } from 'next/server';
 import { dbConnect } from '@/lib/mongodb';
 import Coupon from '@/models/Coupon';
 
+// Feature 14 Architectural Feature Flag
+const ENABLE_COUPONS = false;
+
 export async function POST(req) {
   try {
+    if (!ENABLE_COUPONS) {
+      return NextResponse.json({
+        valid: false,
+        message: 'Coupons and promotional discount codes are currently unavailable on this platform.',
+      });
+    }
+
     await dbConnect();
     const body = await req.json();
     const rawCode = String(body.code || '').trim().toUpperCase();

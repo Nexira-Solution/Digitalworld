@@ -1,10 +1,10 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
-import { Search, ShoppingBag, Menu, X, ChevronDown, ClipboardList, Heart, Store } from 'lucide-react';
+import { Search, ShoppingBag, Menu, X, ClipboardList, Heart, Store } from 'lucide-react';
 import { useCart } from './CartContext';
 import { useWishlist } from './WhishlistContext';
 import CouponMarquee from './CouponMarquee';
@@ -14,12 +14,6 @@ const INK_SOFT = '#6B6B6B';
 const GOLD = '#C9A227';
 const LINE = '#E8E8E8';
 const PAPER = '#FFFFFF';
-
-const SHOP_GROUPS = [
-  { key: 'bestseller', label: 'Best Sellers', qs: 'flag=bestseller' },
-  { key: 'topseller', label: 'Top Sellers', qs: 'flag=topseller' },
-  { key: 'newarrival', label: 'New Arrivals', qs: 'flag=newarrival' },
-];
 
 // Gold text is hard to read on white, so hover/active states use a gold
 // underline instead of a gold text color.
@@ -33,31 +27,14 @@ function underlineOff(el) {
 }
 
 export default function Navbar() {
-  // Main categories only, each carrying its own `subcategories` array
-  // (as returned by /api/categories' `topLevel` field), so the Shop menu
-  // can nest subcategories under their parent instead of listing every
-  // category flat.
-  const [categories, setCategories] = useState([]);
   const [query, setQuery] = useState('');
   const [menuOpen, setMenuOpen] = useState(false);
-  const [shopOpen, setShopOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
-  const [mobileGroupOpen, setMobileGroupOpen] = useState(null);
-  const [mobileCatOpen, setMobileCatOpen] = useState(null); // `${groupKey}:${categoryId}` of the expanded subcategory list
-
-  const closeTimer = useRef(null);
 
   const router = useRouter();
   const { count } = useCart();
   const { wishlist } = useWishlist();
   const wishlistCount = wishlist?.length || 0;
-
-  useEffect(() => {
-    fetch('/api/categories')
-      .then((r) => r.json())
-      .then((d) => setCategories(d.topLevel || []))
-      .catch(() => {});
-  }, []);
 
   // Lock background scroll while the full-screen mobile menu is open,
   // so the homepage doesn't scroll/run underneath it.
@@ -87,22 +64,8 @@ export default function Navbar() {
     setSearchOpen(false);
   }
 
-  function openShop() {
-    if (closeTimer.current) clearTimeout(closeTimer.current);
-    setShopOpen(true);
-  }
-  function scheduleCloseShop() {
-    closeTimer.current = setTimeout(() => setShopOpen(false), 150);
-  }
-
-  function categoryHref(slug, qs) {
-    return `/category/${slug}?${qs}`;
-  }
-
   function closeMobileMenu() {
     setMenuOpen(false);
-    setMobileGroupOpen(null);
-    setMobileCatOpen(null);
   }
 
   return (
@@ -132,74 +95,15 @@ export default function Navbar() {
                   Home
                 </Link>
 
-                <div className="relative" onMouseEnter={openShop} onMouseLeave={scheduleCloseShop}>
-                  <button
-                    className="text-[13px] font-normal tracking-[1.5px] uppercase transition-colors"
-                    style={{
-                      color: INK,
-                      textDecoration: shopOpen ? 'underline' : 'none',
-                      textDecorationColor: GOLD,
-                      textDecorationThickness: '2px',
-                      textUnderlineOffset: '6px',
-                    }}
-                  >
-                    Shop
-                  </button>
-
-                  {shopOpen && categories.length > 0 && (
-                    <div className="absolute left-0 top-full pt-5" style={{ width: '620px' }}>
-                      <div
-                        style={{ background: PAPER, borderTop: `1px solid ${GOLD}` }}
-                        className="py-6 px-6 grid grid-cols-3 gap-8 max-h-[70vh] overflow-y-auto"
-                      >
-                        {SHOP_GROUPS.map((group) => (
-                          <div key={group.key}>
-                            <div
-                              className="text-[11px] font-semibold tracking-[1.5px] uppercase mb-3 pb-2"
-                              style={{ color: INK, borderBottom: `1px solid ${LINE}` }}
-                            >
-                              {group.label}
-                            </div>
-                            <div className="flex flex-col gap-2.5">
-                              {categories.map((c) => (
-                                <div key={c._id}>
-                                  <Link
-                                    href={categoryHref(c.slug, group.qs)}
-                                    onClick={() => setShopOpen(false)}
-                                    className="py-0.5 text-[13px] font-medium tracking-wide transition-colors block w-fit"
-                                    style={{ color: INK }}
-                                    onMouseEnter={(e) => underlineOn(e.currentTarget)}
-                                    onMouseLeave={(e) => underlineOff(e.currentTarget)}
-                                  >
-                                    {c.name}
-                                  </Link>
-
-                                  {c.subcategories?.length > 0 && (
-                                    <div className="flex flex-col mt-1 pl-3" style={{ borderLeft: `1px solid ${LINE}` }}>
-                                      {c.subcategories.map((sub) => (
-                                        <Link
-                                          key={sub._id}
-                                          href={categoryHref(sub.slug, group.qs)}
-                                          onClick={() => setShopOpen(false)}
-                                          className="py-1 text-[12px] tracking-wide transition-colors"
-                                          style={{ color: INK_SOFT }}
-                                          onMouseEnter={(e) => (e.currentTarget.style.color = INK)}
-                                          onMouseLeave={(e) => (e.currentTarget.style.color = INK_SOFT)}
-                                        >
-                                          {sub.name}
-                                        </Link>
-                                      ))}
-                                    </div>
-                                  )}
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                </div>
+                <Link
+                  href="/shop"
+                  className="text-[13px] font-normal tracking-[1.5px] uppercase transition-colors"
+                  style={{ color: INK }}
+                  onMouseEnter={(e) => underlineOn(e.currentTarget)}
+                  onMouseLeave={(e) => underlineOff(e.currentTarget)}
+                >
+                  Shop
+                </Link>
 
                 <Link
                   href="/orders"
@@ -324,92 +228,14 @@ export default function Navbar() {
               Home
             </Link>
 
-            <div
+            <Link
+              href="/shop"
+              onClick={closeMobileMenu}
               className="py-3.5 text-[14px] tracking-[1.5px] uppercase"
               style={{ color: INK, borderBottom: `1px solid ${LINE}` }}
             >
               Shop
-            </div>
-
-            {SHOP_GROUPS.map((group) => (
-              <div key={group.key} style={{ borderBottom: `1px solid ${LINE}` }}>
-                <button
-                  className="w-full flex items-center justify-between py-3 pl-3 text-[13px] tracking-wide uppercase"
-                  style={{
-                    color: mobileGroupOpen === group.key ? INK : INK_SOFT,
-                    boxShadow: mobileGroupOpen === group.key ? `inset 2px 0 0 ${GOLD}` : 'none',
-                  }}
-                  onClick={() => setMobileGroupOpen((v) => (v === group.key ? null : group.key))}
-                >
-                  {group.label}
-                  <ChevronDown
-                    size={14}
-                    strokeWidth={1.5}
-                    style={{
-                      transform: mobileGroupOpen === group.key ? 'rotate(180deg)' : 'rotate(0deg)',
-                      transition: 'transform 150ms ease',
-                    }}
-                  />
-                </button>
-
-                {mobileGroupOpen === group.key && (
-                  <div className="flex flex-col pb-3">
-                    {categories.map((c) => {
-                      const catKey = `${group.key}:${c._id}`;
-                      const hasSubs = c.subcategories?.length > 0;
-                      const isCatOpen = mobileCatOpen === catKey;
-                      return (
-                        <div key={c._id} className="flex flex-col">
-                          <div className="flex items-center">
-                            <Link
-                              href={categoryHref(c.slug, group.qs)}
-                              onClick={closeMobileMenu}
-                              className="flex-1 py-2.5 pl-6 text-[13px] tracking-wide"
-                              style={{ color: INK_SOFT }}
-                            >
-                              {c.name}
-                            </Link>
-                            {hasSubs && (
-                              <button
-                                onClick={() => setMobileCatOpen((v) => (v === catKey ? null : catKey))}
-                                className="px-3 py-2.5"
-                                aria-label={`Toggle ${c.name} subcategories`}
-                              >
-                                <ChevronDown
-                                  size={12}
-                                  strokeWidth={1.5}
-                                  style={{
-                                    color: INK_SOFT,
-                                    transform: isCatOpen ? 'rotate(180deg)' : 'rotate(0deg)',
-                                    transition: 'transform 150ms ease',
-                                  }}
-                                />
-                              </button>
-                            )}
-                          </div>
-
-                          {hasSubs && isCatOpen && (
-                            <div className="flex flex-col pb-1.5">
-                              {c.subcategories.map((sub) => (
-                                <Link
-                                  key={sub._id}
-                                  href={categoryHref(sub.slug, group.qs)}
-                                  onClick={closeMobileMenu}
-                                  className="py-2 pl-10 text-[12.5px] tracking-wide"
-                                  style={{ color: INK_SOFT }}
-                                >
-                                  {sub.name}
-                                </Link>
-                              ))}
-                            </div>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-            ))}
+            </Link>
 
             <Link
               href="/orders"

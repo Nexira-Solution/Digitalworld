@@ -5,14 +5,14 @@ import { dbConnect } from '@/lib/mongodb';
 import Banner from '@/models/Banner';
 import { requireAdmin, requireApprovedSeller } from '@/lib/apiAuth';
 
-// Sellers can view their own banners even while pending approval
+// Sellers can view their own storefront banners even while pending approval
 export const GET = requireAdmin(async (req, ctx, admin) => {
   await dbConnect();
-  const banners = await Banner.find({ seller: admin.id }).sort({ createdAt: -1 }).lean();
+  const banners = await Banner.find({ seller: admin.id, bannerType: { $ne: 'homepage' } }).sort({ createdAt: -1 }).lean();
   return NextResponse.json({ banners });
 });
 
-// Only approved sellers can create banners
+// Only approved sellers can create storefront banners
 export const POST = requireApprovedSeller(async (req, ctx, admin) => {
   await dbConnect();
   const body = await req.json();
@@ -20,7 +20,7 @@ export const POST = requireApprovedSeller(async (req, ctx, admin) => {
     return NextResponse.json({ error: 'Banner image is required' }, { status: 400 });
   }
 
-  // Whitelist fields: sellers can't set sortOrder, approval, or seller themselves
+  // Whitelist fields: sellers can't set sortOrder, approval, bannerType, or seller themselves
   const banner = await Banner.create({
     title: body.title || '',
     subtitle: body.subtitle || '',
@@ -30,6 +30,7 @@ export const POST = requireApprovedSeller(async (req, ctx, admin) => {
     buttonText: body.buttonText || 'Shop Now',
     isActive: true,
     sortOrder: 0,
+    bannerType: 'storefront',
     seller: admin.id,
     approval: 'pending',
   });

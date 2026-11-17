@@ -25,6 +25,17 @@ const BankDetailsSchema = new mongoose.Schema(
   { _id: false }
 );
 
+const DocumentsSchema = new mongoose.Schema(
+  {
+    panCard: { type: String, default: '' },
+    gstCertificate: { type: String, default: '' },
+    cancelledCheque: { type: String, default: '' },
+    fssaiCertificate: { type: String, default: '' },
+    addressProof: { type: String, default: '' },
+  },
+  { _id: false }
+);
+
 const SellerBusinessProfileSchema = new mongoose.Schema(
   {
     seller: {
@@ -40,6 +51,18 @@ const SellerBusinessProfileSchema = new mongoose.Schema(
     banner: { type: String, default: '', trim: true },
     yearOfEstablishment: { type: Number, default: 2020 },
     productCategories: [{ type: String, trim: true }],
+
+    // Validations & Tax identifiers (Feature 8)
+    panNumber: { type: String, default: '', trim: true, uppercase: true },
+    fssaiNumber: { type: String, default: '', trim: true },
+    documents: { type: DocumentsSchema, default: () => ({}) },
+
+    // Delivery charge settings per seller (Feature 11)
+    deliveryCharge: { type: Number, default: 49 },
+    freeDeliveryThreshold: { type: Number, default: 499 },
+    minOrderValue: { type: Number, default: 0 },
+
+    // Performance statistics
     responseTime: { type: String, default: 'Within 2 Hours' },
     onTimeDispatchRate: { type: Number, default: 98 },
     reorderRate: { type: Number, default: 24 },
@@ -47,6 +70,7 @@ const SellerBusinessProfileSchema = new mongoose.Schema(
     reviewCount: { type: Number, default: 0 },
     totalOrders: { type: Number, default: 0 },
     totalProducts: { type: Number, default: 0 },
+
     pickupAddress: { type: AddressSchema, default: () => ({}) },
     returnAddress: { type: AddressSchema, default: () => ({}) },
     bankDetails: { type: BankDetailsSchema, default: () => ({}) },
@@ -65,4 +89,3 @@ const SellerBusinessProfileSchema = new mongoose.Schema(
 
 export default mongoose.models.SellerBusinessProfile ||
   mongoose.model('SellerBusinessProfile', SellerBusinessProfileSchema);
-

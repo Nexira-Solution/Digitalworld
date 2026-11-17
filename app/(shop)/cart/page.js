@@ -11,6 +11,9 @@ import toast from 'react-hot-toast';
 
 const FONT_OUTFIT = "'Outfit', sans-serif";
 
+// Feature 14 Architectural Feature Flag
+const ENABLE_COUPONS = false;
+
 export default function CartPage() {
   const router = useRouter();
   const { items, updateQty, removeItem, subtotal } = useCart();
@@ -275,85 +278,87 @@ export default function CartPage() {
 
           {/* Right Column: Order Summary & Coupons */}
           <div className="lg:col-span-5 space-y-6">
-            {/* Coupon Code Section */}
-            <div className="bg-white rounded-2xl p-5 sm:p-6 border border-[#E8E8E8] shadow-xs space-y-4">
-              <div className="flex items-center gap-2">
-                <Tag size={16} className="text-[#C9A227]" />
-                <h3 className="font-bold text-sm text-[#000000]">Apply Coupon</h3>
-              </div>
+            {/* Coupon Code Section (Feature 14: Gated by ENABLE_COUPONS) */}
+            {ENABLE_COUPONS && (
+              <div className="bg-white rounded-2xl p-5 sm:p-6 border border-[#E8E8E8] shadow-xs space-y-4">
+                <div className="flex items-center gap-2">
+                  <Tag size={16} className="text-[#C9A227]" />
+                  <h3 className="font-bold text-sm text-[#000000]">Apply Coupon</h3>
+                </div>
 
-              {appliedCoupon ? (
-                <div className="p-3.5 rounded-xl bg-[#E8F7E5] border border-[#16803C]/30 flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <CheckCircle2 size={16} className="text-[#16803C]" />
-                    <div>
-                      <p className="font-bold text-xs text-[#16803C]">
-                        Coupon <strong>{appliedCoupon}</strong> applied!
-                      </p>
-                      <p className="text-[11px] text-[#333333]">You save {formatINR(discount)}</p>
+                {appliedCoupon ? (
+                  <div className="p-3.5 rounded-xl bg-[#E8F7E5] border border-[#16803C]/30 flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <CheckCircle2 size={16} className="text-[#16803C]" />
+                      <div>
+                        <p className="font-bold text-xs text-[#16803C]">
+                          Coupon <strong>{appliedCoupon}</strong> applied!
+                        </p>
+                        <p className="text-[11px] text-[#333333]">You save {formatINR(discount)}</p>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleRemoveCoupon}
+                      className="p-1 rounded-full text-[#16803C] hover:bg-[#16803C]/10 transition-colors"
+                    >
+                      <X size={15} />
+                    </button>
+                  </div>
+                ) : (
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      placeholder="Enter Coupon Code"
+                      value={couponCode}
+                      onChange={(e) => setCouponCode(e.target.value.toUpperCase())}
+                      onKeyDown={(e) => e.key === 'Enter' && handleApplyCoupon(couponCode)}
+                      className="flex-1 px-3.5 py-2.5 text-xs font-mono font-bold uppercase tracking-wider rounded-xl border border-[#D6D6D6] outline-none focus:border-[#000000] transition-colors"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => handleApplyCoupon(couponCode)}
+                      disabled={validatingCoupon || !couponCode.trim()}
+                      className="px-5 py-2.5 rounded-xl text-xs font-bold bg-[#000000] text-white hover:bg-neutral-800 disabled:opacity-40 transition-all shrink-0"
+                    >
+                      {validatingCoupon ? 'Checking…' : 'Apply'}
+                    </button>
+                  </div>
+                )}
+
+                {/* 1-Click Available Coupons */}
+                {availableCoupons.length > 0 && !appliedCoupon && (
+                  <div className="pt-2 border-t border-[#F0F0F0] space-y-2">
+                    <p className="text-[11px] font-bold text-[#6B6B6B] uppercase tracking-wider">
+                      Available Offers
+                    </p>
+                    <div className="space-y-1.5">
+                      {availableCoupons.map((c) => (
+                        <button
+                          key={c._id || c.code}
+                          type="button"
+                          onClick={() => {
+                            setCouponCode(c.code);
+                            handleApplyCoupon(c.code);
+                          }}
+                          className="w-full text-left p-2 rounded-xl border border-dashed border-[#C9A227] bg-[#FAF7F0] hover:bg-[#F5EED4] transition-colors flex items-center justify-between"
+                        >
+                          <div className="min-w-0 pr-2">
+                            <span className="font-mono font-bold text-xs text-[#000000]">
+                              {c.code}
+                            </span>
+                            <p className="text-[11px] text-[#5E5E5E] truncate">
+                              {c.description || `${c.discountValue}% discount`}
+                            </p>
+                          </div>
+                          <span className="text-xs font-bold text-[#C9A227] shrink-0">Apply</span>
+                        </button>
+                      ))}
                     </div>
                   </div>
-                  <button
-                    type="button"
-                    onClick={handleRemoveCoupon}
-                    className="p-1 rounded-full text-[#16803C] hover:bg-[#16803C]/10 transition-colors"
-                  >
-                    <X size={15} />
-                  </button>
-                </div>
-              ) : (
-                <div className="flex gap-2">
-                  <input
-                    type="text"
-                    placeholder="Enter Coupon Code"
-                    value={couponCode}
-                    onChange={(e) => setCouponCode(e.target.value.toUpperCase())}
-                    onKeyDown={(e) => e.key === 'Enter' && handleApplyCoupon(couponCode)}
-                    className="flex-1 px-3.5 py-2.5 text-xs font-mono font-bold uppercase tracking-wider rounded-xl border border-[#D6D6D6] outline-none focus:border-[#000000] transition-colors"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => handleApplyCoupon(couponCode)}
-                    disabled={validatingCoupon || !couponCode.trim()}
-                    className="px-5 py-2.5 rounded-xl text-xs font-bold bg-[#000000] text-white hover:bg-neutral-800 disabled:opacity-40 transition-all shrink-0"
-                  >
-                    {validatingCoupon ? 'Checking…' : 'Apply'}
-                  </button>
-                </div>
-              )}
-
-              {/* 1-Click Available Coupons */}
-              {availableCoupons.length > 0 && !appliedCoupon && (
-                <div className="pt-2 border-t border-[#F0F0F0] space-y-2">
-                  <p className="text-[11px] font-bold text-[#6B6B6B] uppercase tracking-wider">
-                    Available Offers
-                  </p>
-                  <div className="space-y-1.5">
-                    {availableCoupons.map((c) => (
-                      <button
-                        key={c._id || c.code}
-                        type="button"
-                        onClick={() => {
-                          setCouponCode(c.code);
-                          handleApplyCoupon(c.code);
-                        }}
-                        className="w-full text-left p-2 rounded-xl border border-dashed border-[#C9A227] bg-[#FAF7F0] hover:bg-[#F5EED4] transition-colors flex items-center justify-between"
-                      >
-                        <div className="min-w-0 pr-2">
-                          <span className="font-mono font-bold text-xs text-[#000000]">
-                            {c.code}
-                          </span>
-                          <p className="text-[11px] text-[#5E5E5E] truncate">
-                            {c.description || `${c.discountValue}% discount`}
-                          </p>
-                        </div>
-                        <span className="text-xs font-bold text-[#C9A227] shrink-0">Apply</span>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
+                )}
+              </div>
+            )}
 
             {/* Order Price Breakdown Card */}
             <div className="bg-white rounded-2xl p-5 sm:p-6 border border-[#E8E8E8] shadow-xs space-y-4">

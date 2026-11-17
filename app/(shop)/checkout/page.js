@@ -28,6 +28,10 @@ const inputClass =
   'border border-[#D6D6D6] rounded-xl placeholder:text-[#8A8A8A] ' +
   'focus:border-[#000000] focus:ring-1 focus:ring-[#000000]';
 
+// Feature Flags (Features 10 & 14)
+const ENABLE_COD = false; // Online payment only; COD disabled but extensible
+const ENABLE_COUPONS = false; // Coupon entry disabled temporarily; extensible
+
 export default function CheckoutPage() {
   const { items, subtotal, clearCart, updateQty, removeItem, setItemStock } = useCart();
   const router = useRouter();
@@ -55,6 +59,7 @@ export default function CheckoutPage() {
   const [checkingStock, setCheckingStock] = useState(false);
 
   const [shipping, setShipping] = useState(null);
+  const [deliveryBreakdown, setDeliveryBreakdown] = useState([]);
   const [freeShippingAbove, setFreeShippingAbove] = useState(499);
   const [shippingLoading, setShippingLoading] = useState(false);
 
@@ -96,29 +101,34 @@ export default function CheckoutPage() {
       .catch(() => {});
   }, [subtotal]);
 
-  // Shipping calculation: Free strictly when discountedSubtotal > 499; Rs 49 if <= 499
+  // Multi-seller Delivery Calculation (Feature 11)
   const fetchShipping = useCallback(async () => {
+    if (!items || items.length === 0) {
+      setShipping(0);
+      setDeliveryBreakdown([]);
+      return;
+    }
+
     setShippingLoading(true);
     try {
-      const res = await fetch('/api/admin/settings', {
+      const res = await fetch('/api/delivery/calculate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ subtotal: discountedSubtotal, totalQty }),
+        body: JSON.stringify({ items }),
       });
       const data = await res.json();
-      if (res.ok) {
-        setShipping(data.shippingCost);
-        setFreeShippingAbove(data.freeShippingAbove || 499);
+      if (data.success) {
+        setShipping(data.totalDeliveryFee);
+        setDeliveryBreakdown(data.breakdown || []);
       } else {
-        // Fallback rule: strictly free > 499
-        setShipping(discountedSubtotal > 499 ? 0 : 49);
+        setShipping(discountedSubtotal >= 499 ? 0 : 49);
       }
     } catch {
-      setShipping(discountedSubtotal > 499 ? 0 : 49);
+      setShipping(discountedSubtotal >= 499 ? 0 : 49);
     } finally {
       setShippingLoading(false);
     }
-  }, [discountedSubtotal, totalQty]);
+  }, [items, discountedSubtotal]);
 
   useEffect(() => {
     fetchShipping();
@@ -525,7 +535,7 @@ export default function CheckoutPage() {
               </div>
             </div>
 
-            {/* Payment Method Selection */}
+            {/* Payment Method Selection (Feature 10: Online Payment Only) */}
             <div className="bg-white rounded-2xl p-6 border border-[#E8E8E8] shadow-xs space-y-4">
               <div className="flex items-center gap-2 border-b border-[#F0F0F0] pb-4">
                 <div className="w-8 h-8 rounded-full bg-[#FAF7F0] flex items-center justify-center text-[#C9A227]">
@@ -533,149 +543,141 @@ export default function CheckoutPage() {
                 </div>
                 <div>
                   <h2 className="font-bold text-base text-[#000000]">Payment Method</h2>
-                  <p className="text-xs text-[#6B6B6B]">Select how you wish to pay</p>
+                  <p className="text-xs text-[#6B6B6B]">100% Encrypted & Secure Online Checkout</p>
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="space-y-3">
                 {/* Razorpay Online */}
-                <label
-                  onClick={() => setPaymentMethod('razorpay')}
-                  className={`p-4 rounded-xl border-2 cursor-pointer transition-all flex items-start gap-3 ${
-                    paymentMethod === 'razorpay'
-                      ? 'border-[#000000] bg-[#FAF7F0]'
-                      : 'border-[#E8E8E8] bg-white hover:border-[#CCCCCC]'
-                  }`}
-                >
-                  <input
-                    type="radio"
-                    name="paymentMethod"
-                    checked={paymentMethod === 'razorpay'}
-                    onChange={() => setPaymentMethod('razorpay')}
-                    className="mt-1 accent-black"
-                  />
-                  <div>
-                    <div className="flex items-center gap-1.5">
+                <div className="p-4 rounded-xl border-2 border-[#000000] bg-[#FAF7F0] flex items-start gap-3">
+                  <div className="w-5 h-5 rounded-full bg-black text-white flex items-center justify-center text-[10px] shrink-0 mt-0.5">
+                    ✓
+                  </div>
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2">
                       <CreditCard size={16} className="text-[#000000]" />
-                      <span className="font-bold text-sm text-[#000000]">Pay Online</span>
+                      <span className="font-bold text-sm text-[#000000]">Online Payment Gateway (Razorpay)</span>
                     </div>
                     <p className="text-xs text-[#5E5E5E] mt-1">
-                      UPI, Credit/Debit Cards, Netbanking (Razorpay)
+                      Pay via UPI (GPay, PhonePe, Paytm), Credit / Debit Cards, Net Banking & Wallets.
                     </p>
-                    <span className="inline-block mt-2 text-[10px] font-bold text-[#16803C] bg-[#E8F7E5] px-2 py-0.5 rounded-full">
-                      Extra 10% instant offer eligible
-                    </span>
-                  </div>
-                </label>
-
-                {/* Cash on Delivery */}
-                <label
-                  onClick={() => setPaymentMethod('cod')}
-                  className={`p-4 rounded-xl border-2 cursor-pointer transition-all flex items-start gap-3 ${
-                    paymentMethod === 'cod'
-                      ? 'border-[#000000] bg-[#FAF7F0]'
-                      : 'border-[#E8E8E8] bg-white hover:border-[#CCCCCC]'
-                  }`}
-                >
-                  <input
-                    type="radio"
-                    name="paymentMethod"
-                    checked={paymentMethod === 'cod'}
-                    onChange={() => setPaymentMethod('cod')}
-                    className="mt-1 accent-black"
-                  />
-                  <div>
-                    <div className="flex items-center gap-1.5">
-                      <Banknote size={16} className="text-[#000000]" />
-                      <span className="font-bold text-sm text-[#000000]">Cash on Delivery</span>
+                    <div className="flex items-center gap-2 mt-2">
+                      <span className="text-[10px] font-bold text-[#16803C] bg-[#E8F7E5] px-2.5 py-0.5 rounded-full border border-[#16803C]/20">
+                        Zero Processing Fee
+                      </span>
+                      <span className="text-[10px] font-bold text-[#64748B] bg-white px-2 py-0.5 rounded-full border border-[#D6D6D6]">
+                        Instant Confirmation
+                      </span>
                     </div>
-                    <p className="text-xs text-[#5E5E5E] mt-1">Pay with cash when package arrives</p>
-                    <span className="inline-block mt-2 text-[10px] font-bold text-[#5E5E5E] bg-[#EEEEEE] px-2 py-0.5 rounded-full">
-                      Available across India
-                    </span>
                   </div>
-                </label>
+                </div>
+
+                {/* Feature 10: Cash on Delivery (COD) disabled via ENABLE_COD = false.
+                    Retained extensible architecture: when ENABLE_COD is set to true, COD radio option renders here. */}
+                {ENABLE_COD && (
+                  <label
+                    onClick={() => setPaymentMethod('cod')}
+                    className="p-4 rounded-xl border-2 cursor-pointer transition-all flex items-start gap-3 border-[#E8E8E8] bg-white hover:border-[#CCCCCC]"
+                  >
+                    <input
+                      type="radio"
+                      name="paymentMethod"
+                      checked={paymentMethod === 'cod'}
+                      onChange={() => setPaymentMethod('cod')}
+                      className="mt-1 accent-black"
+                    />
+                    <div>
+                      <div className="flex items-center gap-1.5">
+                        <Banknote size={16} className="text-[#000000]" />
+                        <span className="font-bold text-sm text-[#000000]">Cash on Delivery</span>
+                      </div>
+                      <p className="text-xs text-[#5E5E5E] mt-1">Pay with cash when package arrives</p>
+                    </div>
+                  </label>
+                )}
               </div>
             </div>
           </div>
 
           {/* Right Column (5 Cols): Order Summary & Coupons */}
           <div className="lg:col-span-5 space-y-6">
-            {/* Promo Coupon Card */}
-            <div className="bg-white rounded-2xl p-5 sm:p-6 border border-[#E8E8E8] shadow-xs space-y-4">
-              <div className="flex items-center gap-2">
-                <Tag size={16} className="text-[#C9A227]" />
-                <h3 className="font-bold text-sm text-[#000000]">Have a Coupon?</h3>
-              </div>
-
-              {appliedCoupon ? (
-                <div className="p-3.5 rounded-xl bg-[#E8F7E5] border border-[#16803C]/30 flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <CheckCircle2 size={16} className="text-[#16803C]" />
-                    <div>
-                      <p className="font-bold text-xs text-[#16803C]">
-                        Coupon <strong>{appliedCoupon}</strong> applied!
-                      </p>
-                      <p className="text-[11px] text-[#333333]">You save {formatINR(discount)}</p>
-                    </div>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={handleRemoveCoupon}
-                    className="p-1 rounded-full text-[#16803C] hover:bg-[#16803C]/10 transition-colors"
-                  >
-                    <X size={15} />
-                  </button>
+            {/* Promo Coupon Card (Feature 14: Gated by ENABLE_COUPONS) */}
+            {ENABLE_COUPONS && (
+              <div className="bg-white rounded-2xl p-5 sm:p-6 border border-[#E8E8E8] shadow-xs space-y-4">
+                <div className="flex items-center gap-2">
+                  <Tag size={16} className="text-[#C9A227]" />
+                  <h3 className="font-bold text-sm text-[#000000]">Have a Coupon?</h3>
                 </div>
-              ) : (
-                <div className="flex gap-2">
-                  <input
-                    type="text"
-                    placeholder="Enter Coupon Code"
-                    value={coupon}
-                    onChange={(e) => setCoupon(e.target.value.toUpperCase())}
-                    onKeyDown={(e) => e.key === 'Enter' && validateAndApplyCoupon(coupon)}
-                    className="flex-1 px-3.5 py-2.5 text-xs font-mono font-bold uppercase tracking-wider rounded-xl border border-[#D6D6D6] outline-none focus:border-[#000000] transition-colors"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => validateAndApplyCoupon(coupon)}
-                    disabled={validatingCoupon || !coupon.trim()}
-                    className="px-5 py-2.5 rounded-xl text-xs font-bold bg-[#000000] text-white hover:bg-neutral-800 disabled:opacity-40 transition-all shrink-0"
-                  >
-                    {validatingCoupon ? 'Checking…' : 'Apply'}
-                  </button>
-                </div>
-              )}
 
-              {/* 1-Click Available Offers */}
-              {availableCoupons.length > 0 && !appliedCoupon && (
-                <div className="pt-2 border-t border-[#F0F0F0] space-y-1.5">
-                  <p className="text-[11px] font-bold text-[#6B6B6B] uppercase tracking-wider">
-                    Available Offers
-                  </p>
-                  {availableCoupons.map((c) => (
-                    <button
-                      key={c._id || c.code}
-                      type="button"
-                      onClick={() => {
-                        setCoupon(c.code);
-                        validateAndApplyCoupon(c.code);
-                      }}
-                      className="w-full text-left p-2 rounded-xl border border-dashed border-[#C9A227] bg-[#FAF7F0] hover:bg-[#F5EED4] transition-colors flex items-center justify-between"
-                    >
-                      <div className="min-w-0 pr-2">
-                        <span className="font-mono font-bold text-xs text-[#000000]">{c.code}</span>
-                        <p className="text-[11px] text-[#5E5E5E] truncate">
-                          {c.description || `${c.discountValue}% discount`}
+                {appliedCoupon ? (
+                  <div className="p-3.5 rounded-xl bg-[#E8F7E5] border border-[#16803C]/30 flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <CheckCircle2 size={16} className="text-[#16803C]" />
+                      <div>
+                        <p className="font-bold text-xs text-[#16803C]">
+                          Coupon <strong>{appliedCoupon}</strong> applied!
                         </p>
+                        <p className="text-[11px] text-[#333333]">You save {formatINR(discount)}</p>
                       </div>
-                      <span className="text-xs font-bold text-[#C9A227] shrink-0">Apply</span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleRemoveCoupon}
+                      className="p-1 rounded-full text-[#16803C] hover:bg-[#16803C]/10 transition-colors"
+                    >
+                      <X size={15} />
                     </button>
-                  ))}
-                </div>
-              )}
-            </div>
+                  </div>
+                ) : (
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      placeholder="Enter Coupon Code"
+                      value={coupon}
+                      onChange={(e) => setCoupon(e.target.value.toUpperCase())}
+                      onKeyDown={(e) => e.key === 'Enter' && validateAndApplyCoupon(coupon)}
+                      className="flex-1 px-3.5 py-2.5 text-xs font-mono font-bold uppercase tracking-wider rounded-xl border border-[#D6D6D6] outline-none focus:border-[#000000] transition-colors"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => validateAndApplyCoupon(coupon)}
+                      disabled={validatingCoupon || !coupon.trim()}
+                      className="px-5 py-2.5 rounded-xl text-xs font-bold bg-[#000000] text-white hover:bg-neutral-800 disabled:opacity-40 transition-all shrink-0"
+                    >
+                      {validatingCoupon ? 'Checking…' : 'Apply'}
+                    </button>
+                  </div>
+                )}
+
+                {/* 1-Click Available Offers */}
+                {availableCoupons.length > 0 && !appliedCoupon && (
+                  <div className="pt-2 border-t border-[#F0F0F0] space-y-1.5">
+                    <p className="text-[11px] font-bold text-[#6B6B6B] uppercase tracking-wider">
+                      Available Offers
+                    </p>
+                    {availableCoupons.map((c) => (
+                      <button
+                        key={c._id || c.code}
+                        type="button"
+                        onClick={() => {
+                          setCoupon(c.code);
+                          validateAndApplyCoupon(c.code);
+                        }}
+                        className="w-full text-left p-2 rounded-xl border border-dashed border-[#C9A227] bg-[#FAF7F0] hover:bg-[#F5EED4] transition-colors flex items-center justify-between"
+                      >
+                        <div className="min-w-0 pr-2">
+                          <span className="font-mono font-bold text-xs text-[#000000]">{c.code}</span>
+                          <p className="text-[11px] text-[#5E5E5E] truncate">
+                            {c.description || `${c.discountValue}% discount`}
+                          </p>
+                        </div>
+                        <span className="text-xs font-bold text-[#C9A227] shrink-0">Apply</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* Order Summary Card */}
             <aside className="bg-white rounded-2xl p-5 sm:p-6 border border-[#E8E8E8] shadow-xs space-y-4">
@@ -724,6 +726,40 @@ export default function CheckoutPage() {
                     )}
                   </span>
                 </div>
+
+                {/* Feature 11: Transparent Multi-Seller Delivery Fee Breakdown */}
+                {deliveryBreakdown && deliveryBreakdown.length > 0 && (
+                  <div className="p-3 rounded-xl bg-[#FAF7F0] border border-[#E7E2D6] space-y-2 my-1">
+                    <div className="flex items-center justify-between text-[11px] font-bold text-[#6B6B6B] uppercase tracking-wider">
+                      <span className="flex items-center gap-1">
+                        <Truck size={12} className="text-[#C9A227]" />
+                        <span>Delivery Fee by Supplier</span>
+                      </span>
+                      <span>{deliveryBreakdown.length} {deliveryBreakdown.length === 1 ? 'Package' : 'Packages'}</span>
+                    </div>
+                    <div className="space-y-1.5 divide-y divide-[#E7E2D6]/60">
+                      {deliveryBreakdown.map((b, idx) => (
+                        <div key={idx} className="pt-1.5 first:pt-0 flex items-center justify-between text-xs">
+                          <div className="min-w-0 pr-2">
+                            <p className="font-semibold text-[#000000] truncate">
+                              {b.storeName}
+                              {b.isPlatform && <span className="ml-1 text-[10px] text-[#C9A227] font-bold">(Official)</span>}
+                            </p>
+                            <p className="text-[10px] text-[#6B6B6B]">
+                              Package subtotal: {formatINR(b.sellerSubtotal)}
+                              {!b.isFree && b.amountNeededForFree > 0 && (
+                                <span> • Add {formatINR(b.amountNeededForFree)} for FREE delivery</span>
+                              )}
+                            </p>
+                          </div>
+                          <span className={`font-bold shrink-0 ${b.isFree ? 'text-[#16803C]' : 'text-[#000000]'}`}>
+                            {b.isFree ? 'FREE' : formatINR(b.fee)}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
 
                 <div className="border-t border-[#F0F0F0] my-2 pt-2.5 flex justify-between items-baseline">
                   <span className="font-bold text-base text-[#000000]">Total to Pay</span>

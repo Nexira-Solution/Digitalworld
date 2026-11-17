@@ -10,13 +10,22 @@ const ReviewSchema = new mongoose.Schema(
     customerName: { type: String, required: true },
     customerEmail: { type: String, default: '' },
     rating: { type: Number, required: true, min: 1, max: 5 },
-    comment: { type: String, default: '' },
-    images: [{ type: String }],
-    isVerifiedPurchase: { type: Boolean, default: false }, // true when verified from delivered order
-    reviewStatus: { type: String, enum: ['pending', 'approved', 'rejected'], default: 'approved' },
-    isApproved: { type: Boolean, default: true },
+    title: { type: String, default: '' }, // Review Title
+    comment: { type: String, default: '' }, // Detailed Feedback
+    images: [{ type: String }], // Up to 5 product photos
+    recommends: { type: Boolean, default: true }, // Recommendation Status (Yes/No)
+    isVerifiedPurchase: { type: Boolean, default: true }, // Verified from delivered orders
+    reviewStatus: {
+      type: String,
+      enum: ['pending', 'approved', 'rejected'],
+      default: 'pending',
+    },
+    isApproved: { type: Boolean, default: false },
+    rejectionReason: { type: String, default: '' },
+    reviewedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'Admin', default: null },
+    reviewedAt: { type: Date, default: null },
     isFeatured: { type: Boolean, default: false },
-    verifiedAt: { type: Date, default: null },
+    verifiedAt: { type: Date, default: Date.now },
   },
   {
     timestamps: true,
@@ -25,25 +34,10 @@ const ReviewSchema = new mongoose.Schema(
   }
 );
 
-// Virtual aliases matching Feature 11 specifications
-ReviewSchema.virtual('productId').get(function () {
-  return this.product;
-});
-ReviewSchema.virtual('sellerId').get(function () {
-  return this.seller;
-});
-ReviewSchema.virtual('orderId').get(function () {
-  return this.order;
-});
-ReviewSchema.virtual('reviewText').get(function () {
-  return this.comment;
-});
-ReviewSchema.virtual('reviewImages').get(function () {
-  return this.images;
-});
-
-ReviewSchema.index({ product: 1, orderItemId: 1 });
+ReviewSchema.index({ product: 1, order: 1 });
+ReviewSchema.index({ product: 1, customerEmail: 1 });
 ReviewSchema.index({ seller: 1, rating: 1 });
+ReviewSchema.index({ isApproved: 1, createdAt: -1 });
 
 export const Review = mongoose.models.Review || mongoose.model('Review', ReviewSchema);
 export const ProductReview = Review;

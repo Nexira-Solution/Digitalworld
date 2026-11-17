@@ -6,7 +6,7 @@ const AddonSelectionSchema = new mongoose.Schema(
     name: { type: String, default: '' },
     image: { type: String, default: '' },
     price: { type: Number, default: 0 },
-    sku: { type: String, default: '' }
+    sku: { type: String, default: '' },
   },
   { _id: false }
 );
@@ -15,12 +15,7 @@ const OrderItemSchema = new mongoose.Schema(
   {
     product: { type: mongoose.Schema.Types.ObjectId, ref: 'Product' },
     comboId: { type: mongoose.Schema.Types.ObjectId, ref: 'Combo', default: null },
-
-    // Snapshot of which seller owned the product at order time — used to
-    // route this line item into that seller's order dashboard, and to
-    // check ownership before a seller is allowed to update order status.
     seller: { type: mongoose.Schema.Types.ObjectId, ref: 'Admin', default: null },
-
     name: String,
     sku: { type: String, default: '' },
     image: String,
@@ -31,7 +26,29 @@ const OrderItemSchema = new mongoose.Schema(
     pantOption: { type: AddonSelectionSchema, default: null },
     shawlOption: { type: AddonSelectionSchema, default: null },
     price: Number,
-    qty: Number
+    qty: Number,
+  },
+  { _id: false }
+);
+
+const StatusHistorySchema = new mongoose.Schema(
+  {
+    status: { type: String, required: true },
+    timestamp: { type: Date, default: Date.now },
+    updatedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'Admin', default: null },
+    updaterRole: { type: String, default: 'admin' },
+    notes: { type: String, default: '' },
+  },
+  { _id: false }
+);
+
+const DeliveryBreakdownSchema = new mongoose.Schema(
+  {
+    sellerId: { type: mongoose.Schema.Types.ObjectId, default: null },
+    sellerName: { type: String, default: '' },
+    deliveryFee: { type: Number, default: 0 },
+    isFreeDelivery: { type: Boolean, default: false },
+    subtotal: { type: Number, default: 0 },
   },
   { _id: false }
 );
@@ -43,7 +60,7 @@ const OrderSchema = new mongoose.Schema(
     customer: {
       name: String,
       phone: String,
-      email: String
+      email: String,
     },
     shippingAddress: {
       line1: String,
@@ -51,22 +68,24 @@ const OrderSchema = new mongoose.Schema(
       city: String,
       state: String,
       pincode: String,
-      landmark: String
+      landmark: String,
     },
     subtotal: Number,
     discount: { type: Number, default: 0 },
     couponCode: { type: String, default: '' },
     couponDiscount: { type: Number, default: 0 },
     shippingFee: { type: Number, default: 0 },
+    deliveryBreakdown: [DeliveryBreakdownSchema],
     taxAmount: { type: Number, default: 0 },
     total: Number,
-    paymentMethod: { type: String, enum: ['razorpay', 'cod'], default: 'razorpay' },
+    paymentMethod: { type: String, enum: ['razorpay', 'cod', 'online'], default: 'razorpay' },
     paymentStatus: { type: String, enum: ['pending', 'paid', 'failed', 'refunded'], default: 'pending' },
     razorpayOrderId: { type: String, unique: true, sparse: true },
     razorpayPaymentId: String,
     status: {
       type: String,
       enum: [
+        'pending',
         'placed',
         'confirmed',
         'processing',
@@ -80,12 +99,13 @@ const OrderSchema = new mongoose.Schema(
         'refund_initiated',
         'refunded',
       ],
-      default: 'placed',
+      default: 'confirmed',
     },
+    statusHistory: [StatusHistorySchema],
     estimatedDelivery: {
-      minDays: { type: Number, default: 5 },
-      maxDays: { type: Number, default: 6 },
-      formattedRange: { type: String, default: '5 - 6 Days' },
+      minDays: { type: Number, default: 3 },
+      maxDays: { type: Number, default: 5 },
+      formattedRange: { type: String, default: '3 - 5 Days' },
     },
     trackingEvents: [
       {
@@ -102,11 +122,12 @@ const OrderSchema = new mongoose.Schema(
       trackingId: { type: String, default: '' },
       awbNumber: { type: String, default: '' },
     },
-    notes: { type: String, default: '' }
+    notes: { type: String, default: '' },
   },
   { timestamps: true }
 );
 
 OrderSchema.index({ 'items.seller': 1 });
+OrderSchema.index({ createdAt: -1 });
 
 export default mongoose.models.Order || mongoose.model('Order', OrderSchema);

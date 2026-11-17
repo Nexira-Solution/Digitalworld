@@ -25,7 +25,15 @@ const ADMIN_NAV = [
   { href: '/admin/categories', label: 'Categories',    icon: ListTree },
   { href: '/admin/orders',     label: 'Orders',        icon: ShoppingCart },
   { href: '/admin/inventory',  label: 'Inventory',     icon: Boxes },
-  { href: '/admin/combos',     label: 'Combo Offers',  icon: Layers },
+  {
+    href: '/admin/combos',
+    label: 'Combo Offers',
+    icon: Layers,
+    children: [
+      { href: '/admin/combos/new', label: 'Add Combo' },
+      { href: '/admin/combos',     label: 'Manage Combos' },
+    ],
+  },
   { href: '/admin/banners',    label: 'Banners',       icon: ImageIcon },
   { href: '/admin/reviews',    label: 'Reviews',       icon: Star },
   { href: '/admin/settings',   label: 'Settings',      icon: SettingsIcon },
@@ -37,7 +45,7 @@ const SELLER_NAV = [
   { href: '/seller/products',  label: 'Products',         icon: Package },
   { href: '/seller/orders',    label: 'Orders',           icon: ShoppingCart },
   { href: '/seller/combos',    label: 'Combo Bundles',    icon: Layers },
-  { href: '/seller/banners',   label: 'Store Banners',    icon: ImageIcon },
+  { href: '/seller/banners',   label: 'Add Store Banner', icon: ImageIcon },
   { href: '/seller/profile',   label: 'Business Profile', icon: User },
   { href: '/seller/settings',  label: 'Settings',         icon: SettingsIcon },
 ];
@@ -105,28 +113,53 @@ export default function AdminShell({ admin, navSet = 'admin', children }) {
 
           {/* Navigation Links */}
           <nav className="p-3 space-y-1 overflow-y-auto max-h-[calc(100vh-140px)]">
-            {nav.map(({ href, label, icon: Icon }) => {
+            {nav.map(({ href, label, icon: Icon, children: subLinks }) => {
               const active = pathname === href || (href !== homeHref && (pathname === href || pathname.startsWith(href + '/')));
+              const isComboMenu = label === 'Combo Offers';
               return (
-                <Link
-                  key={href}
-                  href={href}
-                  onClick={() => setOpen(false)}
-                  className={`flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-semibold tracking-wide transition-all ${
-                    active
-                      ? 'bg-[#0F172A] text-white shadow-xs'
-                      : 'text-[#64748B] hover:text-[#0F172A] hover:bg-[#FAF7EE]'
-                  }`}
-                >
-                  <Icon
-                    size={17}
-                    className={active ? 'text-[#C9A227]' : 'text-neutral-400 group-hover:text-[#0F172A]'}
-                  />
-                  <span>{label}</span>
-                  {active && (
-                    <span className="ml-auto w-1.5 h-1.5 rounded-full bg-[#C9A227]" />
+                <div key={href} className="space-y-0.5">
+                  <Link
+                    href={href}
+                    onClick={() => setOpen(false)}
+                    className={`flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-semibold tracking-wide transition-all ${
+                      active
+                        ? 'bg-[#0F172A] text-white shadow-xs'
+                        : 'text-[#64748B] hover:text-[#0F172A] hover:bg-[#FAF7EE]'
+                    }`}
+                  >
+                    <Icon
+                      size={17}
+                      className={active ? 'text-[#C9A227]' : 'text-neutral-400 group-hover:text-[#0F172A]'}
+                    />
+                    <span>{label}</span>
+                    {active && (
+                      <span className="ml-auto w-1.5 h-1.5 rounded-full bg-[#C9A227]" />
+                    )}
+                  </Link>
+
+                  {/* Submenu for Combo Offers (Add Combo, Manage Combos) */}
+                  {Array.isArray(subLinks) && (active || pathname.startsWith(href)) && (
+                    <div className="pl-8 pr-2 py-1 space-y-1">
+                      {subLinks.map((sub) => {
+                        const subActive = pathname === sub.href;
+                        return (
+                          <Link
+                            key={sub.href}
+                            href={sub.href}
+                            onClick={() => setOpen(false)}
+                            className={`block px-3 py-1.5 rounded-lg text-[11px] font-semibold transition-colors ${
+                              subActive
+                                ? 'bg-[#C9A227]/15 text-[#C9A227] font-bold'
+                                : 'text-[#64748B] hover:text-[#0F172A] hover:bg-neutral-100'
+                            }`}
+                          >
+                            • {sub.label}
+                          </Link>
+                        );
+                      })}
+                    </div>
                   )}
-                </Link>
+                </div>
               );
             })}
           </nav>

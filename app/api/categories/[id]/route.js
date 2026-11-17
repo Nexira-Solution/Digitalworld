@@ -39,7 +39,7 @@ export const PUT = requireAdmin(async (req, { params }) => {
     if (parent) nextType = parent.productType || 'apparel';
   }
   if (!PRODUCT_TYPE_KEYS.includes(nextType)) {
-    return NextResponse.json({ error: 'Invalid product type' }, { status: 400 });
+    nextType = 'general';
   }
 
   // Changing the type under existing products would leave them with fields that

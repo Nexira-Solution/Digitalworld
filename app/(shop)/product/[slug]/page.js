@@ -48,6 +48,9 @@ import RelatedProductsCarousel from '@/components/RelatedProductsCarousel';
 import TopRatedReviews from '@/components/TopRatedReviews';
 import toast from 'react-hot-toast';
 
+// Requirement 08: Disable coupon offers from active UI (extensible architecture)
+const ENABLE_COUPONS = false;
+
 const FONT_OUTFIT = "'Outfit', sans-serif";
 
 // Design tokens — exact brand palette
@@ -354,6 +357,43 @@ export default function ProductPage() {
 
   const { product, reviews, related } = data;
 
+  // Feature 13: Structured Specifications List across all categories
+  const specificationsList = (() => {
+    if (!product) return [];
+    const list = [];
+    if (product.brand) list.push({ key: 'Brand', value: product.brand });
+    if (product.productType) list.push({ key: 'Category Type', value: product.productType });
+    if (product.category?.name) list.push({ key: 'Category', value: product.category.name });
+    if (product.subcategory) list.push({ key: 'Subcategory', value: product.subcategory });
+    if (product.sku) list.push({ key: 'SKU Code', value: product.sku });
+    if (product.barcode) list.push({ key: 'Barcode / EAN', value: product.barcode });
+    if (product.fabric) list.push({ key: 'Fabric / Material', value: product.fabric });
+    if (product.washCare) list.push({ key: 'Wash & Care Instructions', value: product.washCare });
+
+    if (product.attributes && typeof product.attributes === 'object') {
+      Object.entries(product.attributes).forEach(([k, v]) => {
+        if (v !== undefined && v !== null && v !== '') {
+          const readableKey = k
+            .replace(/([A-Z])/g, ' $1')
+            .replace(/^./, (s) => s.toUpperCase());
+          list.push({ key: readableKey, value: String(v) });
+        }
+      });
+    }
+
+    if (Array.isArray(product.specs)) {
+      product.specs.forEach((s) => {
+        if (s.key && s.value) {
+          if (!list.some((existing) => existing.key.toLowerCase() === s.key.toLowerCase())) {
+            list.push({ key: s.key, value: String(s.value) });
+          }
+        }
+      });
+    }
+
+    return list;
+  })();
+
   // Resolve gallery images dynamically from activeVariant and product
   const rawImages = [
     ...(activeVariant?.images?.filter(Boolean) || []),
@@ -390,10 +430,11 @@ export default function ProductPage() {
       ? Math.round(unitPrice / (1 - product.discountPercentage / 100))
       : 0;
 
-  // Stock calculation — strictly enforce stock warning ONLY when stock < 5
-  const selectedStock = selectedSizeObj ? Number(selectedSizeObj.stock ?? 50) : 50;
-  const isOutOfStock = selectedStock <= 0;
-  const isLowStock = selectedStock > 0 && selectedStock < 5;
+  // Stock calculation — strictly enforce Out of Stock and low stock warning (< 5)
+  const allSizesOutOfStock = backendSizes.length > 0 && backendSizes.every((s) => Number(s.stock ?? 0) <= 0);
+  const selectedStock = selectedSizeObj ? Number(selectedSizeObj.stock ?? 0) : 0;
+  const isOutOfStock = allSizesOutOfStock || selectedStock <= 0;
+  const isLowStock = !isOutOfStock && selectedStock > 0 && selectedStock < 5;
 
   // Discount & Savings
   const discountPct =
@@ -509,19 +550,9 @@ export default function ProductPage() {
     router.push('/checkout');
   }
 
-  // Smooth scroll helper for tabs
+  // Feature 13: Instant inline tab switching without layout shifts or page scrolling
   const handleTabClick = (tab) => {
     setActiveTab(tab);
-    if (tab === 'Reviews') {
-      const el = document.getElementById('reviews-section');
-      if (el) el.scrollIntoView({ behavior: 'smooth' });
-    } else if (tab === 'Related Products') {
-      const el = document.getElementById('related-products-section');
-      if (el) el.scrollIntoView({ behavior: 'smooth' });
-    } else {
-      const el = document.getElementById('product-details-content');
-      if (el) el.scrollIntoView({ behavior: 'smooth' });
-    }
   };
 
   return (
@@ -747,13 +778,17 @@ export default function ProductPage() {
 
             {/* Rating & Real Review Statistics */}
             <div className="flex items-center gap-2 text-xs sm:text-sm text-[#5E5E5E] flex-wrap">
-              <div className="flex items-center gap-1 font-bold text-[#000000]">
+              <button
+                type="button"
+                onClick={() => setActiveTab('Customer Reviews')}
+                className="flex items-center gap-1 font-bold text-[#000000] hover:text-[#C9A227] transition-colors"
+              >
                 <Star size={15} className="fill-[#F59E0B] text-[#F59E0B]" />
                 <span>{averageRating.toFixed(1)}</span>
-              </div>
-              <span className="text-[#5E5E5E]">
-                ({totalReviewsCount.toLocaleString()} {totalReviewsCount === 1 ? 'Review' : 'Reviews'})
-              </span>
+                <span className="text-[#5E5E5E] font-normal underline decoration-dotted ml-1">
+                  ({totalReviewsCount.toLocaleString()} {totalReviewsCount === 1 ? 'Review' : 'Reviews'})
+                </span>
+              </button>
               <span className="text-[#D1D5DB] font-normal mx-0.5">|</span>
               <span className="font-medium text-[#1A1A1A]">
                 {product.soldCount ? `${product.soldCount.toLocaleString()}+ Sold` : '12,560+ Sold'}
@@ -972,8 +1007,8 @@ export default function ProductPage() {
                 </ul>
               </div>
 
-              {/* Active Promotional Coupons Display */}
-              {Array.isArray(data.coupons) && data.coupons.length > 0 && (
+              {/* Active Promotional Coupons Display (Requirement 08: Hidden while ENABLE_COUPONS = false) */}
+              {ENABLE_COUPONS && Array.isArray(data.coupons) && data.coupons.length > 0 && (
                 <div className="pt-3 border-t border-[#EEEEEE] space-y-2.5">
                   <div className="flex items-center gap-1.5 text-xs font-bold text-[#000000]">
                     <Sparkles size={14} className="text-[#C9A227]" />
@@ -1032,18 +1067,16 @@ export default function ProductPage() {
           </div>
         </div>
 
-                {/* ===================== SECTION 08: PRODUCT INFORMATION TABS ===================== */}
+        {/* ===================== SECTION 08: PRODUCT INFORMATION TABS (Feature 13) ===================== */}
         <div className="order-3 lg:order-none border-b border-[#E7E2D6] mb-8 overflow-x-auto no-scrollbar">
           <div className="flex items-center gap-1 sm:gap-2">
             {[
               'Product Details',
-              'Ingredients',
-              'Nutritional Info',
-              'Supplier',
-              `Reviews (${totalReviewsCount.toLocaleString()})`,
-              'Related Products',
+              'Specifications',
+              `Customer Reviews (${totalReviewsCount.toLocaleString()})`,
+              'Supplier Storefront',
             ].map((tab) => {
-              const tabKey = tab.startsWith('Reviews') ? 'Reviews' : tab;
+              const tabKey = tab.startsWith('Customer Reviews') ? 'Customer Reviews' : tab;
               const isActive = activeTab === tabKey;
               return (
                 <button
@@ -1063,144 +1096,241 @@ export default function ProductPage() {
           </div>
         </div>
 
-        {/* ===================== SECTION 09: PRODUCT DETAILS CONTENT (2-COLUMN) ===================== */}
-        <div id="product-details-content" className="order-4 lg:order-none grid grid-cols-1 lg:grid-cols-12 gap-8 mb-16 items-start">
-          {/* Left Column: About this Product */}
-          <div className="lg:col-span-7 space-y-3.5">
-            <div className="flex items-center gap-2">
-              <Info size={18} className="text-[#C9A227]" />
-              <h3 className="text-base sm:text-lg font-bold text-[#000000]">
-                {activeTab === 'Ingredients'
-                  ? 'Ingredients & Composition'
-                  : activeTab === 'Nutritional Info'
-                  ? 'Nutritional Information & Specifications'
-                  : activeTab === 'Supplier'
-                  ? 'Supplier & Artisan Profile'
-                  : 'About this Product'}
-              </h3>
-            </div>
+        {/* ===================== SECTION 09: CONSOLIDATED PRODUCT DETAILS CONTENT (Feature 13) ===================== */}
+        <div id="product-details-content" className="order-4 lg:order-none mb-14 min-h-[320px]">
+          {/* TAB 1: PRODUCT DETAILS */}
+          {activeTab === 'Product Details' && (
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+              {/* Left Column (7 Cols): Product Description & Highlights */}
+              <div className="lg:col-span-7 space-y-4">
+                <div className="flex items-center gap-2">
+                  <Info size={18} className="text-[#C9A227]" />
+                  <h3 className="text-base sm:text-lg font-bold text-[#000000]">
+                    Product Overview & Details
+                  </h3>
+                </div>
 
-            {activeTab === 'Ingredients' ? (
-              <p className="text-sm text-[#333333] leading-relaxed">
-                {product.attributes?.ingredients ||
-                  product.fabric ||
-                  'Pure, authentic ingredients prepared according to traditional culinary standards. Free from artificial flavors and preservatives.'}
-              </p>
-            ) : activeTab === 'Nutritional Info' ? (
-              product.specs && product.specs.length > 0 ? (
-                <div className="overflow-x-auto">
-                  <table className="w-full text-xs sm:text-sm text-left border border-[#E7E2D6] rounded-xl overflow-hidden">
-                    <thead className="bg-[#FAF7F0] font-bold text-black border-b border-[#E7E2D6]">
+                <div className="text-sm text-[#333333] leading-relaxed space-y-3">
+                  <p>
+                    {product.description ||
+                      'Authentic high-quality product sourced directly from certified manufacturers and traditional culinary masters. Carefully prepared, packaged, and inspected for optimal freshness and superior standards.'}
+                  </p>
+
+                  {product.attributes?.ingredients && (
+                    <div className="p-3.5 rounded-xl bg-[#FAF7F0] border border-[#E7E2D6] space-y-1">
+                      <p className="font-bold text-xs text-[#000000]">Ingredients & Recipe:</p>
+                      <p className="text-xs text-[#5E5E5E]">{product.attributes.ingredients}</p>
+                    </div>
+                  )}
+
+                  {product.washCare && (
+                    <div className="p-3.5 rounded-xl bg-[#FAF7F0] border border-[#E7E2D6] space-y-1">
+                      <p className="font-bold text-xs text-[#000000]">Care & Storage Instructions:</p>
+                      <p className="text-xs text-[#5E5E5E]">{product.washCare}</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Right Column (5 Cols): Compact Product Rating Summary Card */}
+              <div className="lg:col-span-5 bg-[#FFFFFF] rounded-2xl border border-[#E7E2D6] p-5 sm:p-6 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-6">
+                <div className="flex flex-col items-start justify-center shrink-0">
+                  <div className="flex items-center gap-2">
+                    <Star size={26} className="fill-[#F59E0B] text-[#F59E0B]" />
+                    <span className="text-3xl font-bold text-[#000000]">
+                      {averageRating.toFixed(1)}
+                    </span>
+                    <span className="text-sm text-[#5E5E5E] font-medium">/ 5</span>
+                  </div>
+                  <p className="text-xs text-[#5E5E5E] mt-1.5 whitespace-nowrap">
+                    Based on {totalReviewsCount.toLocaleString()} {totalReviewsCount === 1 ? 'Review' : 'Reviews'}
+                  </p>
+                </div>
+
+                <div className="flex-1 space-y-1.5 text-xs min-w-[170px] w-full">
+                  {ratingDistribution.map((row) => (
+                    <div key={row.star} className="flex items-center gap-2">
+                      <span className="w-4 text-[#000000] font-bold text-right">{row.star}</span>
+                      <Star size={11} className="fill-[#F59E0B] text-[#F59E0B] shrink-0" />
+                      <div className="h-2 flex-1 bg-[#EEEEEE] rounded-full overflow-hidden">
+                        <div
+                          className="h-full bg-[#C9A227] rounded-full transition-all duration-300"
+                          style={{ width: `${row.pct}%` }}
+                        />
+                      </div>
+                      <span className="w-8 text-right text-[#5E5E5E] font-medium">{row.pct}%</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* TAB 2: SPECIFICATIONS */}
+          {activeTab === 'Specifications' && (
+            <div className="space-y-4">
+              <div className="flex items-center gap-2">
+                <Tag size={18} className="text-[#C9A227]" />
+                <h3 className="text-base sm:text-lg font-bold text-[#000000]">
+                  Technical & Category Specifications
+                </h3>
+              </div>
+
+              {specificationsList.length > 0 ? (
+                <div className="border border-[#E7E2D6] rounded-2xl overflow-hidden shadow-xs">
+                  <table className="w-full text-xs sm:text-sm text-left">
+                    <thead className="bg-[#FAF7F0] border-b border-[#E7E2D6] text-[#000000] font-bold">
                       <tr>
-                        <th className="p-3">Specification / Nutrient</th>
-                        <th className="p-3">Value</th>
+                        <th className="py-3 px-4 w-1/3 sm:w-1/4">Specification Attribute</th>
+                        <th className="py-3 px-4">Details</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-[#E7E2D6] text-[#333333]">
-                      {product.specs.map((spec, i) => (
-                        <tr key={i}>
-                          <td className="p-3 font-medium">{spec.key}</td>
-                          <td className="p-3">{spec.value}</td>
+                      {specificationsList.map((item, idx) => (
+                        <tr key={idx} className="hover:bg-[#FAF9F5] transition-colors">
+                          <td className="py-3 px-4 font-semibold text-[#000000] bg-[#FAF7F0]/40">
+                            {item.key}
+                          </td>
+                          <td className="py-3 px-4">{item.value}</td>
                         </tr>
                       ))}
                     </tbody>
                   </table>
                 </div>
               ) : (
-                <p className="text-sm text-[#333333] leading-relaxed">
-                  {product.attributes?.nutrition ||
-                    'Nutritional information per serving is specified on the product packaging. Certified for purity and safety.'}
-                </p>
-              )
-            ) : activeTab === 'Supplier' ? (
-              <div className="space-y-4">
-                <p className="text-sm text-[#333333] leading-relaxed">
-                  {data.supplierInfo?.businessDescription ||
-                    'Verified merchant partner offering authentic, high-quality handcrafted foods directly from culinary heritage origins.'}
-                </p>
-                <div className="p-4 rounded-2xl bg-[#FAF7F0] border border-[#E7E2D6] space-y-3">
-                  <div className="flex items-center justify-between flex-wrap gap-2">
-                    <div>
-                      <p className="font-bold text-sm text-[#000000]">
-                        {data.supplierInfo?.businessName || 'Authentic Merchant'}
-                      </p>
-                      <p className="text-xs text-[#5E5E5E]">
-                        {data.supplierInfo?.shopLocation} • Established {data.supplierInfo?.yearOfEstablishment || 2020}
-                      </p>
+                <div className="p-8 rounded-2xl bg-[#FAF7F0] border border-[#E7E2D6] text-center text-xs text-[#6B6B6B]">
+                  Standard product specifications are printed on the package. Genuine guaranteed.
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* TAB 3: CUSTOMER REVIEWS (INLINE WITHOUT SCROLLING) */}
+          {activeTab === 'Customer Reviews' && (
+            <div className="space-y-4">
+              <TopRatedReviews
+                productId={product._id}
+                reviews={reviews}
+                productRating={product.rating}
+                reviewCount={product.numReviews || product.reviewCount}
+                onOpenLightbox={(img) => setLightboxImg(img)}
+                onReviewAdded={() => loadProduct()}
+              />
+            </div>
+          )}
+
+          {/* TAB 4: SUPPLIER STOREFRONT */}
+          {activeTab === 'Supplier Storefront' && (
+            <div className="space-y-4">
+              {data.supplierInfo ? (
+                <div className="bg-white rounded-2xl p-6 shadow-xs border border-[#E7E2D6] space-y-6">
+                  {/* Top Header */}
+                  <div className="flex items-center justify-between pb-4 border-b border-[#F0F0F0] flex-wrap gap-2">
+                    <div className="flex items-center gap-2.5">
+                      <div className="w-8 h-8 rounded-full bg-[#FAF7F0] flex items-center justify-center text-[#C9A227] shadow-xs">
+                        <Store size={17} />
+                      </div>
+                      <div>
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-[#C9A227]">
+                          Direct From Producer
+                        </span>
+                        <h4 className="text-base sm:text-lg font-bold text-[#000000] leading-tight">
+                          {data.supplierInfo.businessName}
+                        </h4>
+                      </div>
                     </div>
-                    {data.supplierInfo?.sellerSlug && (
-                      <Link
-                        href={`/store/${data.supplierInfo.sellerSlug}`}
-                        className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold bg-[#000000] text-white hover:bg-neutral-800 transition-colors"
-                      >
-                        <span>Visit Storefront</span>
-                        <ExternalLink size={13} />
-                      </Link>
+
+                    {data.supplierInfo.isVerifiedMerchant && (
+                      <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold text-[#16803C] bg-[#E8F7E5] border border-[#16803C]/20 shadow-xs">
+                        <CheckCircle2 size={13} />
+                        <span>Verified Authentic Merchant</span>
+                      </div>
                     )}
                   </div>
-                  <div className="grid grid-cols-3 gap-2 pt-2 border-t border-[#E7E2D6]/60 text-center">
-                    <div>
-                      <p className="text-[11px] text-[#5E5E5E]">Categories</p>
-                      <p className="font-bold text-xs text-[#000000] truncate">
-                        {data.supplierInfo?.productCategories?.join(', ') || 'Gourmet'}
-                      </p>
+
+                  {/* Profile & Metrics */}
+                  <div className="flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-6">
+                    <div className="flex items-start gap-4 min-w-0 lg:max-w-[40%]">
+                      <div className="relative w-16 h-16 sm:w-20 sm:h-20 rounded-2xl overflow-hidden bg-[#FAF7F0] border border-[#E8E8E8] shrink-0 flex items-center justify-center shadow-xs">
+                        {data.supplierInfo.shopLogo ? (
+                          <Image
+                            src={data.supplierInfo.shopLogo}
+                            alt={data.supplierInfo.businessName}
+                            fill
+                            unoptimized
+                            className="object-cover"
+                          />
+                        ) : (
+                          <span className="font-bold text-2xl text-[#C9A227]">
+                            {data.supplierInfo.businessName?.[0] || 'S'}
+                          </span>
+                        )}
+                      </div>
+
+                      <div className="min-w-0 flex-1 space-y-1 text-xs">
+                        <p className="font-bold text-sm text-[#000000]">
+                          {data.supplierInfo.businessName}
+                        </p>
+                        <p className="text-[#5E5E5E]">
+                          {data.supplierInfo.shopLocation} • Established {data.supplierInfo.yearOfEstablishment}
+                        </p>
+                        {data.supplierInfo.businessDescription && (
+                          <p className="text-[#6B6B6B] leading-relaxed line-clamp-3 pt-1">
+                            {data.supplierInfo.businessDescription}
+                          </p>
+                        )}
+                      </div>
                     </div>
-                    <div>
-                      <p className="text-[11px] text-[#5E5E5E]">Rating</p>
-                      <p className="font-bold text-xs text-[#000000]">
-                        ★ {Number(data.supplierInfo?.rating || 4.8).toFixed(1)}
-                      </p>
+
+                    {/* Metrics Grid */}
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 flex-1 lg:px-4 py-3 lg:py-0 border-y lg:border-y-0 lg:border-x border-[#F0F0F0]">
+                      <div className="bg-[#FAF7F0] rounded-xl p-3 border border-[#E8E8E8]/70 text-center">
+                        <p className="text-[11px] text-[#5E5E5E]">Store Rating</p>
+                        <p className="font-bold text-sm text-[#000000] flex items-center justify-center gap-1 mt-0.5">
+                          <Star size={13} className="fill-[#F59E0B] text-[#F59E0B]" />
+                          <span>{Number(data.supplierInfo.rating || 4.8).toFixed(1)}</span>
+                          <span className="text-[10px] text-[#5E5E5E] font-normal">/ 5</span>
+                        </p>
+                        <p className="text-[10px] text-[#8A8A8A] mt-0.5">Verified Reviews</p>
+                      </div>
+
+                      <div className="bg-[#FAF7F0] rounded-xl p-3 border border-[#E8E8E8]/70 text-center">
+                        <p className="text-[11px] text-[#5E5E5E]">On-Time Dispatch</p>
+                        <p className="font-bold text-sm text-[#16803C] mt-0.5">
+                          {data.supplierInfo.onTimeDispatchRate ?? 98}%
+                        </p>
+                        <p className="text-[10px] text-[#16803C]/80 mt-0.5">Reliable Shipping</p>
+                      </div>
+
+                      <div className="bg-[#FAF7F0] rounded-xl p-3 border border-[#E8E8E8]/70 text-center">
+                        <p className="text-[11px] text-[#5E5E5E]">Response Rate</p>
+                        <p className="font-bold text-sm text-[#000000] mt-0.5">
+                          {data.supplierInfo.responseTime || 'Under 2 hours'}
+                        </p>
+                        <p className="text-[10px] text-[#8A8A8A] mt-0.5">Prompt Support</p>
+                      </div>
                     </div>
-                    <div>
-                      <p className="text-[11px] text-[#5E5E5E]">Dispatch</p>
-                      <p className="font-bold text-xs text-[#16803C]">
-                        {data.supplierInfo?.onTimeDispatchRate ?? 98}% on-time
-                      </p>
+
+                    {/* Storefront Button */}
+                    <div className="shrink-0 flex items-center justify-center">
+                      <Link
+                        href={`/store/${data.supplierInfo.sellerSlug}`}
+                        className="h-12 px-6 rounded-xl text-xs font-bold bg-[#000000] text-white hover:bg-[#C9A227] hover:text-[#000000] transition-all flex items-center gap-2 shadow-sm"
+                      >
+                        <Store size={15} />
+                        <span>Visit Storefront</span>
+                        <ArrowRight size={14} />
+                      </Link>
                     </div>
                   </div>
                 </div>
-              </div>
-            ) : (
-              <p className="text-sm text-[#333333] leading-relaxed">
-                {product.description ||
-                  'Our Kerala Banana Chips are made from handpicked, high-quality bananas, thinly sliced and traditionally fried in pure coconut oil. They are perfectly crispy, mildly salted, and deliver the authentic taste of Kerala in every bite.'}
-              </p>
-            )}
-          </div>
-
-          {/* Right Column: Compact Product Rating Summary Card (Side-by-side inside card) */}
-          <div className="lg:col-span-5 bg-[#FFFFFF] rounded-2xl border border-[#E7E2D6] p-5 sm:p-6 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-6">
-            {/* Left Score Block */}
-            <div className="flex flex-col items-start justify-center shrink-0">
-              <div className="flex items-center gap-2">
-                <Star size={26} className="fill-[#F59E0B] text-[#F59E0B]" />
-                <span className="text-3xl font-bold text-[#000000]">
-                  {averageRating.toFixed(1)}
-                </span>
-                <span className="text-sm text-[#5E5E5E] font-medium">/ 5</span>
-              </div>
-              <p className="text-xs text-[#5E5E5E] mt-1.5 whitespace-nowrap">
-                Based on {totalReviewsCount.toLocaleString()} {totalReviewsCount === 1 ? 'Review' : 'Reviews'}
-              </p>
-            </div>
-
-            {/* Right Progress Bars Block */}
-            <div className="flex-1 space-y-1.5 text-xs min-w-[170px] w-full">
-              {ratingDistribution.map((row) => (
-                <div key={row.star} className="flex items-center gap-2">
-                  <span className="w-4 text-[#000000] font-bold text-right">{row.star}</span>
-                  <Star size={11} className="fill-[#F59E0B] text-[#F59E0B] shrink-0" />
-                  <div className="h-2 flex-1 bg-[#EEEEEE] rounded-full overflow-hidden">
-                    <div
-                      className="h-full bg-[#C9A227] rounded-full transition-all duration-300"
-                      style={{ width: `${row.pct}%` }}
-                    />
-                  </div>
-                  <span className="w-8 text-right text-[#5E5E5E] font-medium">{row.pct}%</span>
+              ) : (
+                <div className="p-8 rounded-2xl bg-[#FAF7F0] border border-[#E7E2D6] text-center text-xs text-[#6B6B6B]">
+                  Official platform product supplied directly by Digital World.
                 </div>
-              ))}
+              )}
             </div>
-          </div>
+          )}
         </div>
 
           {/* ===================== SECTION 07: PRODUCT TRUST STRIP (Dynamic from Backend) ===================== */}
@@ -1230,149 +1360,6 @@ export default function ProductPage() {
           </div>
         </div>
 
-        {/* ===================== SECTION 04: HORIZONTAL "KNOW YOUR SUPPLIER" SECTION ===================== */}
-        {data.supplierInfo && (
-          <div className="order-6 lg:order-none my-6 lg:my-8 bg-white rounded-[24px] p-6 lg:p-7 shadow-[0_4px_24px_rgba(0,0,0,0.04)] border border-[#E7E2D6] transition-all hover:shadow-[0_8px_30px_rgba(0,0,0,0.06)]">
-            {/* Top Bar: Section Badge & Verification */}
-            <div className="flex items-center justify-between pb-4 border-b border-[#F0F0F0] flex-wrap gap-2">
-              <div className="flex items-center gap-2.5">
-                <div className="w-8 h-8 rounded-full bg-[#FAF7F0] flex items-center justify-center text-[#C9A227] shadow-xs">
-                  <Store size={17} />
-                </div>
-                <div>
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-[#C9A227]">
-                    Direct From Producer
-                  </span>
-                  <h3 className="text-base sm:text-lg font-bold text-[#000000] leading-tight">
-                    Know Your Supplier
-                  </h3>
-                </div>
-              </div>
-
-              {data.supplierInfo.isVerifiedMerchant && (
-                <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold text-[#16803C] bg-[#E8F7E5] border border-[#16803C]/20 shadow-xs">
-                  <CheckCircle2 size={13} />
-                  <span>Verified Authentic Merchant</span>
-                </div>
-              )}
-            </div>
-
-            {/* Main Horizontal Content: 3 Columns (Seller Profile | Metrics Grid | CTAs) */}
-            <div className="flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-6 pt-5">
-              {/* Left Column: Shop Identity & Bio */}
-              <div className="flex items-start gap-4 min-w-0 lg:max-w-[36%]">
-                <div className="relative w-16 h-16 sm:w-20 sm:h-20 rounded-2xl overflow-hidden bg-[#FAF7F0] border border-[#E8E8E8] shrink-0 flex items-center justify-center shadow-xs">
-                  {data.supplierInfo.shopLogo ? (
-                    <Image
-                      src={data.supplierInfo.shopLogo}
-                      alt={data.supplierInfo.businessName}
-                      fill
-                      unoptimized
-                      className="object-cover"
-                    />
-                  ) : (
-                    <span className="font-bold text-2xl text-[#C9A227]">
-                      {data.supplierInfo.businessName?.[0] || 'S'}
-                    </span>
-                  )}
-                </div>
-
-                <div className="min-w-0 flex-1 space-y-1">
-                  <Link
-                    href={`/store/${data.supplierInfo.sellerSlug}`}
-                    className="font-bold text-base sm:text-lg text-[#000000] hover:text-[#C9A227] transition-colors truncate block"
-                  >
-                    {data.supplierInfo.businessName}
-                  </Link>
-
-                  <div className="flex items-center gap-2 text-xs text-[#5E5E5E] flex-wrap">
-                    <span className="flex items-center gap-1 font-medium text-[#1A1A1A]">
-                      <MapPin size={12} className="text-[#C9A227]" />
-                      {data.supplierInfo.shopLocation}
-                    </span>
-                    <span>•</span>
-                    <span>Est. {data.supplierInfo.yearOfEstablishment}</span>
-                    <span>•</span>
-                    <span className="px-2 py-0.5 rounded-md bg-[#FAF7F0] text-[#000000] font-medium text-[11px] border border-[#E8E8E8]">
-                      {data.supplierInfo.businessCategory}
-                    </span>
-                  </div>
-
-                  {data.supplierInfo.businessDescription && (
-                    <p className="text-xs text-[#5E5E5E] leading-relaxed line-clamp-2 pt-0.5">
-                      {data.supplierInfo.businessDescription}
-                    </p>
-                  )}
-                </div>
-              </div>
-
-              {/* Center Column: Horizontal Performance Metrics Grid */}
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 flex-1 lg:px-4 py-3 lg:py-0 border-y lg:border-y-0 lg:border-x border-[#F0F0F0]">
-                {/* Metric 1: Store Rating */}
-                <div className="bg-[#FAF7F0] rounded-xl p-3 border border-[#E8E8E8]/70 text-center">
-                  <p className="text-[11px] text-[#5E5E5E]">Store Rating</p>
-                  <p className="font-bold text-sm text-[#000000] flex items-center justify-center gap-1 mt-0.5">
-                    <Star size={13} className="fill-[#F59E0B] text-[#F59E0B]" />
-                    <span>{Number(data.supplierInfo.rating || 4.8).toFixed(1)}</span>
-                    <span className="text-[10px] text-[#5E5E5E] font-normal">/ 5</span>
-                  </p>
-                  <p className="text-[10px] text-[#8A8A8A] mt-0.5">Verified Reviews</p>
-                </div>
-
-                {/* Metric 2: Response Time */}
-                <div className="bg-[#FAF7F0] rounded-xl p-3 border border-[#E8E8E8]/70 text-center">
-                  <p className="text-[11px] text-[#5E5E5E]">Response Time</p>
-                  <p className="font-bold text-sm text-[#000000] mt-0.5">
-                    {data.supplierInfo.responseTime || 'Within 2h'}
-                  </p>
-                  <p className="text-[10px] text-[#8A8A8A] mt-0.5">Quick Support</p>
-                </div>
-
-                {/* Metric 3: On-Time Dispatch */}
-                <div className="bg-[#FAF7F0] rounded-xl p-3 border border-[#E8E8E8]/70 text-center">
-                  <p className="text-[11px] text-[#5E5E5E]">On-Time Dispatch</p>
-                  <p className="font-bold text-sm text-[#16803C] mt-0.5">
-                    {data.supplierInfo.onTimeDispatchRate ?? 98}%
-                  </p>
-                  <p className="text-[10px] text-[#16803C]/80 mt-0.5">Reliable Shipping</p>
-                </div>
-
-                {/* Metric 4: Reorder Rate */}
-                <div className="bg-[#FAF7F0] rounded-xl p-3 border border-[#E8E8E8]/70 text-center">
-                  <p className="text-[11px] text-[#5E5E5E]">Repeat Orders</p>
-                  <p className="font-bold text-sm text-[#000000] mt-0.5">
-                    {data.supplierInfo.reorderRate ?? 28}%
-                  </p>
-                  <p className="text-[10px] text-[#8A8A8A] mt-0.5">Loyal Customers</p>
-                </div>
-              </div>
-
-              {/* Right Column: Call to Action Buttons */}
-              <div className="flex flex-col sm:flex-row lg:flex-col gap-2.5 shrink-0 lg:w-[170px] justify-center">
-                <Link
-                  href={`/store/${data.supplierInfo.sellerSlug}`}
-                  className="h-11 px-4 rounded-xl text-xs font-bold text-center bg-[#000000] text-white hover:bg-neutral-800 transition-all flex items-center justify-center gap-1.5 shadow-sm active:scale-[0.98]"
-                >
-                  <Store size={14} />
-                  <span>View Storefront</span>
-                  <ArrowRight size={13} />
-                </Link>
-                <Link
-                  href={`/store/${data.supplierInfo.sellerSlug}#products`}
-                  className="h-11 px-4 rounded-xl text-xs font-bold text-center border border-[#000000] text-[#000000] hover:bg-[#FAF7F0] transition-all flex items-center justify-center gap-1.5 active:scale-[0.98]"
-                >
-                  <ShoppingBag size={14} />
-                  <span>More Products</span>
-                </Link>
-              </div>
-            </div>
-          </div>
-        )}
-
-      
-
-
-
         {/* ===================== SECTION 10: RELATED PRODUCTS ===================== */}
         <div id="related-products-section" className="order-8 lg:order-none">
           <RelatedProductsCarousel
@@ -1380,18 +1367,6 @@ export default function ProductPage() {
             currentProductId={product._id}
             currentProductSlug={product.slug}
             currentProductName={product.name}
-          />
-        </div>
-
-        {/* ===================== SECTION 11: TOP RATED REVIEWS ===================== */}
-        <div id="reviews-section" className="order-9 lg:order-none">
-          <TopRatedReviews
-            productId={product._id}
-            reviews={reviews}
-            productRating={product.rating}
-            reviewCount={product.numReviews || product.reviewCount}
-            onOpenLightbox={(img) => setLightboxImg(img)}
-            onReviewAdded={() => loadProduct()}
           />
         </div>
       </div>

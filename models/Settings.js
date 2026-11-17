@@ -3,32 +3,73 @@ import mongoose from 'mongoose';
 const SettingsSchema = new mongoose.Schema(
   {
     key: { type: String, required: true, unique: true },
-    storeName: { type: String },
-    logo: { type: String },
-    whatsapp: { type: String },
-    instagram: { type: String },
-    address: { type: String },
+    storeName: { type: String, default: 'Digital World' },
+    logo: { type: String, default: '' },
+    whatsapp: { type: String, default: '+91 98765 43210' },
+    instagram: { type: String, default: 'https://instagram.com/digitalworld' },
+    facebook: { type: String, default: 'https://facebook.com/digitalworld' },
+    twitter: { type: String, default: 'https://twitter.com/digitalworld' },
+    youtube: { type: String, default: 'https://youtube.com/digitalworld' },
+    linkedin: { type: String, default: 'https://linkedin.com/company/digitalworld' },
+    phone: { type: String, default: '+91 98765 43210' },
+    email: { type: String, default: 'support@digitalworld.com' },
+    address: { type: String, default: '123 Commerce Avenue, Cyber City, Chennai, Tamil Nadu, 600001' },
+    workingHours: { type: String, default: 'Mon - Sat: 9:00 AM - 8:00 PM IST' },
+    aboutUs: {
+      type: String,
+      default:
+        'Digital World is India’s premier verified multi-vendor marketplace offering authentic electronics, apparel, regional gourmet sweets, snacks, and daily essentials direct from certified suppliers.',
+    },
+    copyrightText: { type: String, default: '© {year} Digital World Multi-Vendor Platform. All rights reserved.' },
 
-    // Weight-based shipping: admin sets the assumed weight of a single
-    // piece (garment/unit) and a price per kg. Total order weight is
-    // computed as (total piece count across the cart) * weightPerPiece,
-    // then charged at pricePerKg, rounded up to the next whole kg.
-    // See lib/shipping.js — the only place this is calculated.
-    // `shippingFee` is legacy and no longer read by the shipping calculator.
-    shippingFee: { type: Number, default: 0 },
-    weightPerPiece: { type: Number, default: 0 }, // grams, per single piece
-    pricePerKg: { type: Number, default: 0 }, // ₹ charged per kg (rounded up)
+    // Feature 11: Platform Delivery Charge Configuration
+    deliveryCharge: { type: Number, default: 49 },
+    freeDeliveryThreshold: { type: Number, default: 499 },
+    minOrderValue: { type: Number, default: 0 },
 
-    // Flat fallback used whenever weight-based shipping can't be computed,
-    // i.e. weightPerPiece or pricePerKg is 0.
-    defaultShippingCharge: { type: Number, default: 0 },
+    // Legacy shipping fallback fields
+    shippingFee: { type: Number, default: 49 },
+    defaultShippingCharge: { type: Number, default: 49 },
+    freeShippingAbove: { type: Number, default: 499 },
+    weightPerPiece: { type: Number, default: 0 },
+    pricePerKg: { type: Number, default: 0 },
 
-    // Order subtotal (₹) at or above which shipping is free.
-    // 0 means "free shipping disabled".
-    freeShippingAbove: { type: Number, default: 0 },
+    // Feature 15: Footer Navigation Links
+    quickLinks: [
+      {
+        label: { type: String, required: true },
+        url: { type: String, required: true },
+        sortOrder: { type: Number, default: 0 },
+      },
+    ],
+    customerServiceLinks: [
+      {
+        label: { type: String, required: true },
+        url: { type: String, required: true },
+        sortOrder: { type: Number, default: 0 },
+      },
+    ],
+    policyLinks: [
+      {
+        label: { type: String, required: true },
+        url: { type: String, required: true },
+        sortOrder: { type: Number, default: 0 },
+      },
+    ],
+    sectionVisibility: {
+      companyInfo: { type: Boolean, default: true },
+      quickLinks: { type: Boolean, default: true },
+      categories: { type: Boolean, default: true },
+      policies: { type: Boolean, default: true },
+      socialLinks: { type: Boolean, default: true },
+      paymentIcons: { type: Boolean, default: true },
+    },
 
-    seoTitle: { type: String },
-    seoDescription: { type: String }
+    seoTitle: { type: String, default: 'Digital World — Multi-Vendor Marketplace' },
+    seoDescription: {
+      type: String,
+      default: 'Premium multi-vendor e-commerce platform offering authentic products from certified suppliers.',
+    },
   },
   { timestamps: true }
 );

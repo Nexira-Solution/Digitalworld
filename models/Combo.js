@@ -3,8 +3,7 @@ import mongoose from 'mongoose';
 const { Schema } = mongoose;
 
 // One line of a multi-product bundle = one exact SKU (product + variant + size)
-// and how many units of it go into ONE combo. Stock is tracked per size, so
-// variantId and size are mandatory — without them stock can't be checked or reduced.
+// and how many units of it go into ONE combo.
 const ProductLineSchema = new Schema(
   {
     product: { type: Schema.Types.ObjectId, ref: 'Product', required: true },
@@ -28,7 +27,7 @@ const ColorOptionSchema = new Schema(
 
 const PackOptionSchema = new Schema(
   {
-    size: { type: Number, required: true }, // pieces in this pack (5, 10, ...)
+    size: { type: Number, required: true }, // pieces in this pack (2, 3, 5, 10...)
     price: { type: Number, required: true },
     originalPrice: { type: Number, default: 0 },
     stock: { type: Number, default: null }, // packs available to sell; null = unlimited
@@ -48,23 +47,32 @@ const SizeChartRowSchema = new Schema(
 
 const ComboSchema = new Schema(
   {
-    type: { type: String, enum: ['multi-product', 'color-pack'], default: 'multi-product' },
+    type: {
+      type: String,
+      enum: ['multi-product', 'color-pack', 'bundle', 'multipack'],
+      default: 'multi-product',
+    },
     name: { type: String, required: true, trim: true },
     slug: { type: String, required: true, unique: true },
     sku: { type: String, default: '', trim: true },
     images: [{ type: String }],
     description: { type: String, default: '' },
 
-    // Owner of the products inside (Admin doc, role 'seller'). null = store-owned.
-    // Set server-side from the products, never from the client.
+    // Owner of the products inside (Admin doc, role 'seller'). null = admin/store-owned.
+    // Set server-side from the products, never blindly from client.
     seller: { type: Schema.Types.ObjectId, ref: 'Admin', default: null },
 
-    // multi-product
+    // multi-product / bundle pricing & savings (Feature 5)
     products: [ProductLineSchema],
     comboPrice: { type: Number, default: 0 },
     originalPrice: { type: Number, default: 0 },
+    discountType: { type: String, enum: ['percentage', 'fixed'], default: 'fixed' },
+    discountValue: { type: Number, default: 0 },
+    savingsAmount: { type: Number, default: 0 },
+    savingsPercentage: { type: Number, default: 0 },
+    comboStock: { type: Number, default: null }, // Explicit combo stock cap; null = dynamic from inventory
 
-    // color-pack
+    // color-pack / multipack
     baseProduct: { type: Schema.Types.ObjectId, ref: 'Product', default: null },
     colors: [ColorOptionSchema],
     packOptions: [PackOptionSchema],
@@ -77,13 +85,17 @@ const ComboSchema = new Schema(
 
 ComboSchema.index({ seller: 1 });
 ComboSchema.index({ isActive: 1, createdAt: -1 });
+ComboSchema.index({ seller: 1, isActive: 1 });
+
 
 // Last line of defence for any code path that bypasses buildComboData.
 ComboSchema.pre('validate', function (next) {
-  if (this.type === 'color-pack') {
-    if (!this.baseProduct) return next(new Error('A base product is required for a colour pack'));
-    if (!this.colors?.length) return next(new Error('Add at least one colour'));
-    if (!this.packOptions?.length) return next(new Error('Add at least one pack option'));
+  const isMultipack = this.type === 'color-pack' || this.type === 'multipack';
+  if (isMultipack) {
+    if (!this.baseProduct) return next(new Error('A base product is required for a multipack'));
+    if (!this.packOptions?.length && !this.colors?.length) {
+      return next(new Error('Add at least one pack option or colour'));
+    }
   } else {
     if (!this.products?.length) return next(new Error('A combo needs at least one product'));
     if (!(this.comboPrice > 0)) return next(new Error('Combo price is required'));
@@ -91,8 +103,6 @@ ComboSchema.pre('validate', function (next) {
   next();
 });
 
-// Dev only: Next.js hot reload keeps Mongoose's model registry alive, so force a
-// recompile to pick up schema edits. In production the model is compiled once.
 if (process.env.NODE_ENV !== 'production' && mongoose.models.Combo) {
   delete mongoose.models.Combo;
 }

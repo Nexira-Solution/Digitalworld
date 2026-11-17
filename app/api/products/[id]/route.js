@@ -219,17 +219,59 @@ export const PUT = requireApprovedSeller(async (req, { params }, admin) => {
   const current = await Product.findOne(getFilter(id)).select('_id category sku seller');
   if (!current) return NextResponse.json({ error: 'Product not found' }, { status: 404 });
 
-  if (!ownsProduct(admin, current)) {
-    return NextResponse.json({ error: 'You do not have permission to edit this product.' }, { status: 403 });
+  // Feature 7 Permission Rules:
+  // Admin can edit ONLY admin-owned products (current.seller === null).
+  // Admin CANNOT edit seller-owned products. Backend must reject any update request.
+  if (admin.role === 'superadmin' && current.seller) {
+    return NextResponse.json(
+      { error: 'Admin cannot edit seller-owned products. Only the respective seller can modify their catalog products.' },
+      { status: 403 }
+    );
+  }
+
+  if (admin.role !== 'superadmin') {
+    if (!current.seller || String(current.seller._id || current.seller) !== String(admin.id)) {
+      return NextResponse.json({ error: 'You do not have permission to edit this product.' }, { status: 403 });
+    }
   }
 
   delete body.sku;
   delete body.seller; // ownership can't be reassigned through this route
+  delete body.productId; // Requirement 05: Product ID should remain unchanged if product is edited
 
   // Type is derived from the (possibly changed) category — never from the client.
   const catId = body.category?._id || body.category || current.category;
+  if (!mongoose.isValidObjectId(catId)) {
+    return NextResponse.json(
+      { error: 'Selected category does not exist. Please select an available category.' },
+      { status: 400 }
+    );
+  }
   const cat = await Category.findById(catId).populate('parent', 'productType');
-  if (!cat) return NextResponse.json({ error: 'Category not found' }, { status: 404 });
+  if (!cat) {
+    return NextResponse.json(
+      { error: 'Selected category does not exist. Please select an available category.' },
+      { status: 400 }
+    );
+  }
+  if (cat.isActive === false) {
+    return NextResponse.json(
+      { error: 'Selected category is inactive. Please select an active category.' },
+      { status: 400 }
+    );
+  }
+
+  // Subcategory check
+  if (body.subcategory) {
+    const subId = body.subcategory?._id || body.subcategory;
+    if (mongoose.isValidObjectId(subId)) {
+      const subcat = await Category.findById(subId);
+      if (!subcat || subcat.isActive === false) {
+        return NextResponse.json({ error: 'Selected subcategory is invalid or inactive.' }, { status: 400 });
+      }
+      clean.subcategory = subcat._id;
+    }
+  }
 
   const typeKey = resolveProductType(cat);
   const { body: clean, error } = sanitizeByType({ ...body, category: cat._id }, typeKey);
@@ -243,6 +285,20 @@ export const PUT = requireApprovedSeller(async (req, { params }, admin) => {
       return vCompare > vPrice ? Math.round(((vCompare - vPrice) / vCompare) * 100) : 0;
     });
     clean.discountPercentage = Math.max(0, ...discounts);
+
+    let totalStock = 0;
+    clean.variants.forEach((v) => {
+      if (v.sizes?.length) {
+        v.sizes.forEach((s) => {
+          totalStock += Math.max(0, Number(s.stock) || 0);
+        });
+      } else {
+        totalStock += Math.max(0, Number(v.stock) || 0);
+      }
+    });
+    clean.totalStock = totalStock;
+  } else if (clean.stock !== undefined) {
+    clean.totalStock = Math.max(0, Number(clean.stock) || 0);
   }
 
   if (body.isBestSeller !== undefined) {

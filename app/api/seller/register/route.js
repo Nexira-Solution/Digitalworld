@@ -5,13 +5,15 @@ import bcrypt from 'bcryptjs';
 import { dbConnect } from '@/lib/mongodb';
 import Admin from '@/models/Admin';
 import SellerBusinessProfile from '@/models/SellerBusinessProfile';
+import {
+  validatePhone,
+  validateGSTIN,
+  validatePincode,
+  validateFSSAI,
+  isFoodCategory,
+} from '@/lib/sellerValidation';
 
-// Email validation regex (RFC 5322 standard compliant)
 const EMAIL_REGEX = /^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9-]+(?:\.[a-zA-Z0-9-]+)+$/;
-// Indian Phone / Mobile validation (10 digits, optionally starting with +91)
-const PHONE_REGEX = /^(?:\+91|91)?[6-9]\d{9}$/;
-// Indian GSTIN regex (15 alphanumeric characters)
-const GSTIN_REGEX = /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}$/;
 
 export async function POST(req) {
   try {
@@ -22,50 +24,74 @@ export async function POST(req) {
     const email = String(body.email || '').toLowerCase().trim();
     const password = String(body.password || '');
     const businessName = String(body.businessName || '').trim();
-    const businessPhone = String(body.businessPhone || '').replace(/\s+/g, '');
-    const whatsappNumber = String(body.whatsappNumber || body.businessPhone || '').replace(/\s+/g, '');
+    const businessPhone = String(body.businessPhone || '').trim();
+    const whatsappNumber = String(body.whatsappNumber || body.businessPhone || '').trim();
     const shopAddress = String(body.shopAddress || body.businessAddress || '').trim();
     const gstNumber = String(body.gstNumber || '').toUpperCase().trim();
+    const category = String(body.category || body.businessCategory || '').trim();
+    const fssaiNumber = String(body.fssaiNumber || '').trim();
 
-    // 1. Validate required fields
+    // 1. Full Name
     if (!fullName) {
       return NextResponse.json({ error: 'Full name is required.' }, { status: 400 });
     }
+
+    // 2. Email
     if (!email || !EMAIL_REGEX.test(email)) {
       return NextResponse.json({ error: 'Please enter a valid email address.' }, { status: 400 });
     }
+
+    // 3. Password
     if (!password || password.length < 6) {
       return NextResponse.json(
         { error: 'Password must be at least 6 characters long.' },
         { status: 400 }
       );
     }
+
+    // 4. Business Name
     if (!businessName) {
       return NextResponse.json({ error: 'Business / Shop name is required.' }, { status: 400 });
     }
-    if (!businessPhone || !PHONE_REGEX.test(businessPhone)) {
-      return NextResponse.json(
-        { error: 'Please enter a valid 10-digit Indian mobile number for Business Phone.' },
-        { status: 400 }
-      );
+
+    // 5. Phone Validation (Feature 8)
+    const phoneErr = validatePhone(businessPhone);
+    if (phoneErr) {
+      return NextResponse.json({ error: phoneErr }, { status: 400 });
     }
-    if (whatsappNumber && !PHONE_REGEX.test(whatsappNumber)) {
-      return NextResponse.json(
-        { error: 'Please enter a valid 10-digit mobile number for WhatsApp.' },
-        { status: 400 }
-      );
+    const cleanPhone = businessPhone.replace(/\s+/g, '').replace(/^(\+91|91)/, '');
+
+    // Optional WhatsApp Phone Validation
+    if (whatsappNumber) {
+      const waErr = validatePhone(whatsappNumber);
+      if (waErr) {
+        return NextResponse.json({ error: `WhatsApp: ${waErr}` }, { status: 400 });
+      }
     }
+    const cleanWhatsApp = whatsappNumber
+      ? whatsappNumber.replace(/\s+/g, '').replace(/^(\+91|91)/, '')
+      : cleanPhone;
+
+    // 6. Shop Address
     if (!shopAddress) {
       return NextResponse.json({ error: 'Shop / Business address is required.' }, { status: 400 });
     }
-    if (gstNumber && !GSTIN_REGEX.test(gstNumber)) {
-      return NextResponse.json(
-        { error: 'Invalid GSTIN format. Expected 15 characters (e.g. 22AAAAA0000A1Z5).' },
-        { status: 400 }
-      );
+
+    // 7. GSTIN Validation (Feature 8)
+    if (gstNumber) {
+      const gstErr = validateGSTIN(gstNumber);
+      if (gstErr) {
+        return NextResponse.json({ error: gstErr }, { status: 400 });
+      }
     }
 
-    // 2. Prevent duplicate accounts (Check email)
+    // 8. FSSAI Validation for Food Categories (Feature 8)
+    const fssaiErr = validateFSSAI(fssaiNumber, category);
+    if (fssaiErr) {
+      return NextResponse.json({ error: fssaiErr }, { status: 400 });
+    }
+
+    // Check duplicate email
     const existingEmail = await Admin.findOne({ email });
     if (existingEmail) {
       return NextResponse.json(
@@ -74,10 +100,9 @@ export async function POST(req) {
       );
     }
 
-    // Check duplicate business phone if provided
-    const cleanPhone = businessPhone.replace(/^(\+91|91)/, '');
+    // Check duplicate phone
     const existingPhone = await Admin.findOne({
-      businessPhone: { $regex: cleanPhone + '$' },
+      businessPhone: cleanPhone,
     });
     if (existingPhone) {
       return NextResponse.json(
@@ -86,10 +111,10 @@ export async function POST(req) {
       );
     }
 
-    // 3. Hash password securely
+    // Hash password
     const passwordHash = await bcrypt.hash(password, 10);
 
-    // 4. Create Seller in MongoDB with status: 'pending'
+    // Create Seller record
     const seller = await Admin.create({
       name: fullName,
       email,
@@ -98,17 +123,19 @@ export async function POST(req) {
       status: 'pending',
       businessName,
       businessPhone: cleanPhone,
-      whatsappNumber: whatsappNumber.replace(/^(\+91|91)/, ''),
+      whatsappNumber: cleanWhatsApp,
       businessAddress: shopAddress,
       shopAddress,
       gstNumber,
       profileVerificationStatus: 'not_submitted',
-      profileCompletion: 25, // Basic details registered
+      profileCompletion: 25,
     });
 
-    // 5. Initialize SellerBusinessProfile
+    // Initialize SellerBusinessProfile
     await SellerBusinessProfile.create({
       seller: seller._id,
+      category,
+      fssaiNumber: fssaiNumber || '',
       pickupAddress: {
         doorNo: '',
         street: shopAddress,
@@ -135,7 +162,7 @@ export async function POST(req) {
       {
         ok: true,
         message:
-          'Your seller registration has been submitted successfully! Your application is under admin review.',
+          'Seller registered successfully! Your merchant account is under administrative review.',
         seller: {
           id: String(seller._id),
           name: seller.name,
@@ -155,4 +182,3 @@ export async function POST(req) {
     );
   }
 }
-

@@ -25,9 +25,10 @@ function parentIdOf(c) {
 
 // A single row in the category list — used for both top-level categories
 // and their subcategories (indented, with a corner-arrow icon).
-function CategoryRow({ category, indent, onMoveUp, onMoveDown, disableUp, disableDown, onEdit, onDelete, onAddSub }) {
+function CategoryRow({ category, indent, onMoveUp, onMoveDown, disableUp, disableDown, onEdit, onDelete, onAddSub, onToggleActive }) {
+  const isActive = category.isActive !== false;
   return (
-    <div className={`card-soft p-4 flex items-center gap-3 ${indent ? 'ml-8' : ''}`}>
+    <div className={`card-soft p-4 flex items-center gap-3 ${indent ? 'ml-8' : ''} ${!isActive ? 'opacity-60 bg-gray-50' : ''}`}>
       <div className="flex flex-col">
         <button
           onClick={onMoveUp}
@@ -51,19 +52,34 @@ function CategoryRow({ category, indent, onMoveUp, onMoveDown, disableUp, disabl
         {category.image && <img src={category.image} alt={category.name} className="w-full h-full object-cover" />}
       </div>
       <div className="flex-1">
-        <p className="font-medium">{category.name}</p>
-        <p className="text-xs text-brand-ink/50">
+        <div className="flex items-center gap-2">
+          <p className="font-medium">{category.name}</p>
+          <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${isActive ? 'bg-green-100 text-green-700' : 'bg-gray-200 text-gray-600'}`}>
+            {isActive ? 'Active' : 'Inactive'}
+          </span>
+        </div>
+        <p className="text-xs text-brand-ink/50 mt-0.5">
           /{category.slug} · {getType(category.productType).label} · order: {category.sortOrder ?? 0}
           {category.sizeChart?.length ? ` · ${category.sizeChart.length} size chart image${category.sizeChart.length > 1 ? 's' : ''}` : ''}
+          {category.customAttributes?.length ? ` · ${category.customAttributes.length} custom attributes` : ''}
         </p>
       </div>
+      <button
+        onClick={onToggleActive}
+        className={`px-2 py-1 text-xs font-semibold rounded-md border transition-colors ${
+          isActive ? 'border-amber-400 text-amber-700 hover:bg-amber-50' : 'border-emerald-500 text-emerald-700 hover:bg-emerald-50'
+        }`}
+        title={isActive ? 'Deactivate this category' : 'Activate this category'}
+      >
+        {isActive ? 'Deactivate' : 'Activate'}
+      </button>
       {onAddSub && (
         <button onClick={onAddSub} className="text-brand-magenta p-1" title="Add subcategory">
           <Plus size={16} />
         </button>
       )}
-      <button onClick={onEdit} className="text-brand-magenta p-1"><Pencil size={16} /></button>
-      <button onClick={onDelete} className="text-brand-magenta p-1"><Trash2 size={16} /></button>
+      <button onClick={onEdit} className="text-brand-magenta p-1" title="Edit category"><Pencil size={16} /></button>
+      <button onClick={onDelete} className="text-brand-magenta p-1" title="Delete category"><Trash2 size={16} /></button>
     </div>
   );
 }
@@ -83,11 +99,26 @@ export default function AdminCategoriesPage() {
   const sizeChartFileRef = useRef();
 
   async function load() {
-    const res = await fetch('/api/categories');
+    const res = await fetch('/api/categories?all=true');
     const data = await res.json();
     setCategories(data.categories || []);
   }
   useEffect(() => { load(); }, []);
+
+  async function toggleActive(c) {
+    const nextActive = c.isActive === false ? true : false;
+    const res = await fetch(`/api/categories/${c._id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ isActive: nextActive }),
+    });
+    if (res.ok) {
+      toast.success(nextActive ? 'Category activated' : 'Category deactivated');
+      load();
+    } else {
+      toast.error('Failed to update category status');
+    }
+  }
 
   const topLevel = categories.filter((c) => !parentIdOf(c));
   const childrenOf = (id) => categories.filter((c) => parentIdOf(c) === id);
@@ -431,6 +462,7 @@ export default function AdminCategoriesPage() {
                 onMoveDown={() => move(topLevel, cIndex, 'down')}
                 disableUp={cIndex === 0 || reordering}
                 disableDown={cIndex === topLevel.length - 1 || reordering}
+                onToggleActive={() => toggleActive(c)}
                 onEdit={() => {
                   setQuickModalData({ _id: c._id, name: c.name, image: c.image || '' });
                   setShowQuickModal(true);
@@ -447,6 +479,7 @@ export default function AdminCategoriesPage() {
                   onMoveDown={() => move(children, i, 'down')}
                   disableUp={i === 0 || reordering}
                   disableDown={i === children.length - 1 || reordering}
+                  onToggleActive={() => toggleActive(child)}
                   onEdit={() => {
                     setQuickModalData({ _id: child._id, name: child.name, image: child.image || '' });
                     setShowQuickModal(true);

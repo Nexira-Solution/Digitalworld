@@ -1,42 +1,52 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
+import Image from 'next/image';
+import {
+  Package,
+  Layers,
+  Sparkles,
+  Percent,
+  IndianRupee,
+  AlertTriangle,
+  CheckCircle2,
+  Trash2,
+  Plus,
+  X,
+  Upload,
+  Info,
+} from 'lucide-react';
 
-const INK = '#000000';
-const INK_SOFT = '#6B6B6B';
-const LINE = '#E8E8E8';
+const INK = '#0F172A';
+const INK_SOFT = '#64748B';
+const LINE = '#E7E2D6';
 const PAPER = '#FFFFFF';
-const RED = '#B3261E';
+const RED = '#DC2626';
 const GOLD = '#C9A227';
 
-const input = 'w-full px-3 py-2 text-sm outline-none';
-const inputStyle = { border: `1px solid ${LINE}`, color: INK, background: PAPER };
+const inputClass = 'w-full px-3.5 py-2.5 text-xs sm:text-sm rounded-xl border border-[#D6D6D6] outline-none focus:border-[#0F172A] transition-colors';
 
 const emptyItem = () => ({ product: '', variantId: '', size: '', qty: 1 });
 const emptyColor = () => ({ name: '', hex: '#000000', variantId: '', size: '', stock: '' });
 const emptyPack = () => ({ size: '', price: '', originalPrice: '', stock: '' });
 const emptyChartRow = () => ({ size: '', chest: '', waist: '', length: '' });
 
-const OPTION_LABELS = { apparel: 'Size', electronics: 'Option', food: 'Pack size', general: 'Option' };
-const optLabel = (p) => OPTION_LABELS[p?.productType] || 'Size';
-const TYPE_NAMES = { apparel: 'Apparel', electronics: 'Electronics', food: 'Food', general: 'General' };
+const OPTION_LABELS = {
+  apparel: 'Size',
+  clothing: 'Size',
+  electronics: 'Variant',
+  snacks: 'Pack Size',
+  sweets: 'Net Weight',
+  groceries: 'Pack Size',
+  vegetables: 'Quantity',
+  fruits: 'Quantity',
+  general: 'Option',
+};
+const optLabel = (p) => OPTION_LABELS[p?.productType] || 'Size / Option';
 
 const idOf = (v) => (v && typeof v === 'object' ? v._id : v) || '';
-const variantLabel = (v, i) =>
-  (v.color || (v.sizes?.length === 1 ? v.sizes[0].size : `Variant ${i + 1}`)) + (v.price ? ` · ₹${v.price}` : '');
-const sizeStockOf = (variant, size) => variant?.sizes?.find((s) => s.size === size)?.stock ?? 0;
-const productLabel = (p) =>
-  `${p.name}${p.sku ? ` (${p.sku})` : ''}${p.productType && p.productType !== 'apparel' ? ` · ${TYPE_NAMES[p.productType] || p.productType}` : ''}`;
 
-/**
- * Shared by the admin panel and the seller panel.
- *   mode        'admin' | 'seller'  — picks the API + product list
- *   comboId     set when editing
- *   initialCombo raw combo (ids or populated docs both work)
- *   onSaved     optional callback(combo); without it the form redirects to /seller/combos
- *   onCancel    optional, shows a Cancel button
- */
 export default function ComboForm({ mode = 'seller', comboId, initialCombo, onSaved, onCancel }) {
   const router = useRouter();
   const isEdit = !!comboId;
@@ -45,6 +55,8 @@ export default function ComboForm({ mode = 'seller', comboId, initialCombo, onSa
   const productsUrl = mode === 'admin' ? '/api/products?limit=200' : '/api/seller/products?limit=200';
 
   const [products, setProducts] = useState([]);
+  const [categories, setCategories] = useState([]);
+  const [selectedCategoryFilter, setSelectedCategoryFilter] = useState('ALL');
   const [productsLoading, setProductsLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -52,13 +64,18 @@ export default function ComboForm({ mode = 'seller', comboId, initialCombo, onSa
   const [form, setForm] = useState({
     type: c?.type || 'multi-product',
     name: c?.name || '',
+    sku: c?.sku || '',
     description: c?.description || '',
     images: c?.images?.length ? c.images : c?.image ? [c.image] : [],
     comboPrice: c?.comboPrice || '',
     originalPrice: c?.originalPrice || '',
+    discountType: c?.discountType || 'fixed', // 'fixed' | 'percentage'
+    discountValue: c?.discountValue || '',
+    comboStock: c?.comboStock ?? '',
     isActive: c ? c.isActive !== false : true,
     baseProduct: idOf(c?.baseProduct),
   });
+
   const [items, setItems] = useState(
     c?.products?.length
       ? c.products.map((p) => ({
@@ -69,16 +86,30 @@ export default function ComboForm({ mode = 'seller', comboId, initialCombo, onSa
         }))
       : [emptyItem(), emptyItem()]
   );
+
   const [colors, setColors] = useState(
     c?.colors?.length
-      ? c.colors.map((x) => ({ name: x.name, hex: x.hex || '#000000', variantId: x.variantId || '', size: x.size || '', stock: x.stock ?? '' }))
+      ? c.colors.map((x) => ({
+          name: x.name,
+          hex: x.hex || '#000000',
+          variantId: x.variantId || '',
+          size: x.size || '',
+          stock: x.stock ?? '',
+        }))
       : []
   );
+
   const [packs, setPacks] = useState(
     c?.packOptions?.length
-      ? c.packOptions.map((p) => ({ size: p.size, price: p.price, originalPrice: p.originalPrice || '', stock: p.stock ?? '' }))
+      ? c.packOptions.map((p) => ({
+          size: p.size,
+          price: p.price,
+          originalPrice: p.originalPrice || '',
+          stock: p.stock ?? '',
+        }))
       : [emptyPack()]
   );
+
   const [chart, setChart] = useState(
     c?.sizeChart?.length ? c.sizeChart.map((r) => ({ ...emptyChartRow(), ...r })) : []
   );
@@ -87,48 +118,142 @@ export default function ComboForm({ mode = 'seller', comboId, initialCombo, onSa
     let alive = true;
     fetch(productsUrl)
       .then((r) => r.json())
-      .then((d) => alive && setProducts(d.products || []))
-      .catch(() => alive && setError('Could not load products. Refresh and try again.'))
-      .finally(() => alive && setProductsLoading(false));
-    return () => { alive = false; };
+      .then((d) => {
+        if (alive) setProducts(d.products || []);
+      })
+      .catch(() => {
+        if (alive) setError('Could not load products catalog.');
+      })
+      .finally(() => {
+        if (alive) setProductsLoading(false);
+      });
+
+    fetch('/api/categories?all=true')
+      .then((r) => r.json())
+      .then((d) => {
+        if (!alive) return;
+        const list = Array.isArray(d) ? d : d.topLevel || d.categories || [];
+        setCategories(list.filter((c) => c.isActive !== false));
+      })
+      .catch(() => {});
+
+    return () => {
+      alive = false;
+    };
   }, [productsUrl]);
 
-  const prodById = (id) => products.find((p) => p._id === id);
+  const filteredProducts = useMemo(() => {
+    if (selectedCategoryFilter === 'ALL' || !selectedCategoryFilter) {
+      return products;
+    }
+    return products.filter((p) => {
+      const catId = p.category?._id || p.category;
+      return String(catId) === String(selectedCategoryFilter);
+    });
+  }, [products, selectedCategoryFilter]);
+
+  const prodById = (id) => products.find((p) => String(p._id) === String(id));
   const upd = (key, value) => setForm((f) => ({ ...f, [key]: value }));
-  const setAt = (setter) => (i, patch) => setter((list) => list.map((x, idx) => (idx === i ? { ...x, ...patch } : x)));
+  const setAt = (setter) => (i, patch) =>
+    setter((list) => list.map((x, idx) => (idx === i ? { ...x, ...patch } : x)));
   const removeAt = (setter) => (i) => setter((list) => list.filter((_, idx) => idx !== i));
   const setItem = setAt(setItems);
   const setColor = setAt(setColors);
   const setPack = setAt(setPacks);
   const setRow = setAt(setChart);
 
-  // ---------- bundle helpers ----------
+  // Bundle line computations
   function onItemProduct(i, id) {
-    const v = prodById(id)?.variants?.length === 1 ? prodById(id).variants[0] : null;
-    setItem(i, { product: id, variantId: v?._id || '', size: v?.sizes?.length === 1 ? v.sizes[0].size : '' });
+    const p = prodById(id);
+    const v = p?.variants?.length === 1 ? p.variants[0] : null;
+    setItem(i, {
+      product: id,
+      variantId: v?._id || '',
+      size: v?.sizes?.length === 1 ? v.sizes[0].size : '',
+    });
   }
+
   function onItemVariant(i, variantId) {
-    const v = prodById(items[i].product)?.variants?.find((x) => x._id === variantId);
-    setItem(i, { variantId, size: v?.sizes?.length === 1 ? v.sizes[0].size : '' });
+    const p = prodById(items[i].product);
+    const v = p?.variants?.find((x) => String(x._id) === String(variantId));
+    setItem(i, {
+      variantId,
+      size: v?.sizes?.length === 1 ? v.sizes[0].size : '',
+    });
   }
 
-  const lineInfo = items.map((it) => {
-    const p = prodById(it.product);
-    const variant = p?.variants?.find((v) => v._id === it.variantId);
-    const qty = Math.max(Number(it.qty) || 1, 1);
-    const stock = variant && it.size ? sizeStockOf(variant, it.size) : null;
-    return { p, variant, qty, stock, price: variant?.price ?? p?.basePrice ?? 0 };
-  });
-  const itemsTotal = lineInfo.reduce((sum, l) => sum + (l.p ? l.price * l.qty : 0), 0);
-  const known = lineInfo.filter((l) => l.stock !== null);
-  const sellable = known.length ? Math.min(...known.map((l) => Math.floor(l.stock / l.qty))) : null;
-  const comboPriceNum = Number(form.comboPrice) || 0;
+  const lineInfo = useMemo(() => {
+    return items.map((it) => {
+      const p = prodById(it.product);
+      const variant = p?.variants?.find((v) => String(v._id) === String(it.variantId));
+      const sizeObj = variant?.sizes?.find((s) => s.size === it.size);
+      const qty = Math.max(Number(it.qty) || 1, 1);
+      const stock = sizeObj ? Number(sizeObj.stock || 0) : null;
+      const actualPrice = Number(sizeObj?.price || variant?.price || p?.price || 0);
+      const sellingPrice = Number(
+        sizeObj?.sellingPrice || sizeObj?.price || variant?.sellingPrice || variant?.price || p?.sellingPrice || p?.price || 0
+      );
+      const image = variant?.images?.[0] || p?.images?.[0] || '';
+      return { p, variant, sizeObj, qty, stock, actualPrice, sellingPrice, image };
+    });
+  }, [items, products]);
 
-  // ---------- colour-pack helpers ----------
+  const itemsTotal = useMemo(() => {
+    return lineInfo.reduce((sum, l) => sum + (l.p ? l.sellingPrice * l.qty : 0), 0);
+  }, [lineInfo]);
+
+  const actualTotal = useMemo(() => {
+    return lineInfo.reduce((sum, l) => sum + (l.p ? (l.actualPrice || l.sellingPrice) * l.qty : 0), 0);
+  }, [lineInfo]);
+
+  // Limiting stock calculation
+  const { sellableStock, limitingProduct } = useMemo(() => {
+    const validLines = lineInfo.filter((l) => l.p && l.stock !== null);
+    if (!validLines.length) return { sellableStock: null, limitingProduct: null };
+
+    let minUnits = Infinity;
+    let limiting = null;
+
+    validLines.forEach((l) => {
+      const possible = Math.floor(l.stock / l.qty);
+      if (possible < minUnits) {
+        minUnits = possible;
+        limiting = l.p?.name;
+      }
+    });
+
+    return { sellableStock: minUnits === Infinity ? null : minUnits, limitingProduct: limiting };
+  }, [lineInfo]);
+
+  // Dynamic price calculation according to discount type
+  const { calculatedComboPrice, savingsAmount, savingsPercentage } = useMemo(() => {
+    let comboPrice = Number(form.comboPrice) || 0;
+    const discountVal = Number(form.discountValue) || 0;
+
+    if (form.discountType === 'percentage' && discountVal > 0) {
+      const pct = Math.min(99, Math.max(0, discountVal));
+      const savings = Math.round(itemsTotal * (pct / 100));
+      comboPrice = Math.max(1, itemsTotal - savings);
+    } else if (form.discountType === 'fixed' && discountVal > 0) {
+      comboPrice = Math.max(1, itemsTotal - discountVal);
+    }
+
+    const savings = Math.max(0, itemsTotal - comboPrice);
+    const pct = itemsTotal > 0 ? Math.round((savings / itemsTotal) * 100) : 0;
+
+    return {
+      calculatedComboPrice: comboPrice,
+      savingsAmount: savings,
+      savingsPercentage: pct,
+    };
+  }, [itemsTotal, form.comboPrice, form.discountType, form.discountValue]);
+
+  // Color pack helpers
   const base = prodById(form.baseProduct);
   const baseHasColors = !base || (base.variants || []).some((v) => v.color);
-  const baseIsApparel = !base || !base.productType || base.productType === 'apparel';
+  const baseIsApparel = !base || !base.productType || base.productType === 'apparel' || base.productType === 'clothing';
   const entryWord = baseHasColors ? 'Colour' : 'Option';
+
   function importColors(p = base) {
     if (!p) return;
     const hasColors = (p.variants || []).some((v) => v.color);
@@ -141,19 +266,26 @@ export default function ComboForm({ mode = 'seller', comboId, initialCombo, onSa
             size: v.sizes?.length === 1 ? v.sizes[0].size : '',
             stock: '',
           }))
-        : // no colours on this product (food, many electronics): one entry per option
-          (p.variants || []).flatMap((v) =>
-            (v.sizes || []).map((sz) => ({ name: sz.size, hex: '', variantId: v._id, size: sz.size, stock: '' }))
+        : (p.variants || []).flatMap((v) =>
+            (v.sizes || []).map((sz) => ({
+              name: sz.size,
+              hex: '',
+              variantId: v._id,
+              size: sz.size,
+              stock: '',
+            }))
           )
     );
   }
+
   function onBaseChange(id) {
     upd('baseProduct', id);
     const p = prodById(id);
     if (p && colors.every((x) => !x.name)) importColors(p);
   }
+
   function onColorVariant(i, variantId) {
-    const v = base?.variants?.find((x) => x._id === variantId);
+    const v = base?.variants?.find((x) => String(x._id) === String(variantId));
     setColor(i, { variantId, size: v?.sizes?.length === 1 ? v.sizes[0].size : '' });
   }
 
@@ -162,13 +294,26 @@ export default function ComboForm({ mode = 'seller', comboId, initialCombo, onSa
     setError('');
     setSaving(true);
 
+    const isBundle = form.type === 'multi-product' || form.type === 'bundle';
+    const finalComboPrice = form.discountType !== 'fixed' || form.discountValue
+      ? calculatedComboPrice
+      : Number(form.comboPrice);
+
+    if (isBundle && itemsTotal > 0 && finalComboPrice >= itemsTotal) {
+      setError(`Combo price (₹${finalComboPrice}) must be less than the regular total price (₹${itemsTotal}) to provide real customer savings.`);
+      setSaving(false);
+      return;
+    }
+
     const payload = {
       type: form.type,
       name: form.name,
+      sku: form.sku,
       description: form.description,
       images: form.images,
+      comboStock: form.comboStock === '' || form.comboStock === null ? null : Number(form.comboStock),
       isActive: form.isActive,
-      ...(form.type === 'multi-product'
+      ...(isBundle
         ? {
             products: items.map((it) => ({
               product: it.product,
@@ -176,8 +321,10 @@ export default function ComboForm({ mode = 'seller', comboId, initialCombo, onSa
               size: it.size,
               qty: Number(it.qty) || 1,
             })),
-            comboPrice: Number(form.comboPrice) || 0,
-            originalPrice: Number(form.originalPrice) || 0,
+            comboPrice: finalComboPrice,
+            originalPrice: itemsTotal,
+            discountType: form.discountType,
+            discountValue: Number(form.discountValue) || savingsAmount,
           }
         : {
             baseProduct: form.baseProduct,
@@ -195,253 +342,564 @@ export default function ComboForm({ mode = 'seller', comboId, initialCombo, onSa
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        setError(data.error || 'Failed to save combo.');
+        setError(data.error || 'Failed to save combo offer.');
         setSaving(false);
         return;
       }
       if (onSaved) {
         onSaved(data.combo);
-        setSaving(false);
       } else {
-        router.push('/seller/combos');
+        router.push(mode === 'admin' ? '/admin/combos' : '/seller/combos');
       }
     } catch {
-      setError('Something went wrong. Please try again.');
+      setError('An unexpected network error occurred. Please try again.');
+    } finally {
       setSaving(false);
     }
   }
 
-  const multi = form.type === 'multi-product';
+  const isMulti = form.type === 'multi-product' || form.type === 'bundle';
 
   return (
-    <form onSubmit={onSubmit} className="flex flex-col gap-8 max-w-3xl">
+    <form onSubmit={onSubmit} className="flex flex-col gap-6 max-w-4xl mx-auto">
       {error && (
-        <div className="px-4 py-3 text-[13px]" role="alert" style={{ background: '#FCE8E6', color: RED }}>{error}</div>
-      )}
-
-      {/* Type */}
-      <Section title="Combo type">
-        <div className="grid sm:grid-cols-2 gap-3">
-          {[
-            ['multi-product', 'Product bundle', 'Different products (or several of one) sold together at one price.'],
-            ['color-pack', 'Multi-pack', 'One product sold in packs (e.g. 5 or 10 pieces), customers pick the colours or options.'],
-          ].map(([value, label, hint]) => (
-            <label
-              key={value}
-              className="p-3 cursor-pointer"
-              style={{ border: `1px solid ${form.type === value ? INK : LINE}` }}
-            >
-              <span className="flex items-center gap-2 text-[13px]" style={{ color: INK }}>
-                <input type="radio" name="type" checked={form.type === value} onChange={() => upd('type', value)} disabled={isEdit} />
-                {label}
-              </span>
-              <span className="block text-[11px] mt-1" style={{ color: INK_SOFT }}>{hint}</span>
-            </label>
-          ))}
+        <div className="p-4 rounded-2xl bg-red-50 border border-red-200 text-xs font-semibold text-red-700 flex items-center gap-2">
+          <AlertTriangle size={16} className="shrink-0 text-red-600" />
+          <span>{error}</span>
         </div>
-        {isEdit && <p className="text-[11px] mt-2" style={{ color: INK_SOFT }}>The type can&apos;t be changed after the combo is created.</p>}
-      </Section>
-
-      <Section title="Basic details">
-        <Field label="Combo name">
-          <input className={input} style={inputStyle} required maxLength={120} value={form.name} onChange={(e) => upd('name', e.target.value)} />
-        </Field>
-        <Field label="Description">
-          <textarea className={input} style={inputStyle} rows={3} value={form.description} onChange={(e) => upd('description', e.target.value)} />
-        </Field>
-        <Field label="Images">
-          <ImageUploader value={form.images} onChange={(v) => upd('images', v)} />
-        </Field>
-        <label className="flex items-center gap-2 text-[13px]" style={{ color: INK }}>
-          <input type="checkbox" checked={form.isActive} onChange={(e) => upd('isActive', e.target.checked)} />
-          Active (visible on site)
-        </label>
-      </Section>
-
-      {productsLoading && <p className="text-[12px]" style={{ color: INK_SOFT }}>Loading products…</p>}
-
-      {/* ---------- product bundle ---------- */}
-      {multi && (
-        <>
-          <Section title="Products in this combo">
-            <p className="text-[11px] mb-3" style={{ color: INK_SOFT }}>
-              Each line is one exact variant and size / option / pack size, and the quantity of it in <b>one</b> combo.
-              You can mix product types (e.g. a snack box with a gadget). Stock is checked and reduced from that
-              entry every time the combo sells.
-              {mode === 'seller' ? ' Only your own products appear here.' : ' All products must belong to the same seller.'}
-            </p>
-
-            {items.map((it, i) => {
-              const { p, variant, qty, stock } = lineInfo[i];
-              const missing = it.product && !productsLoading && !p;
-              return (
-                <div key={i} className="p-3 mb-3" style={{ border: `1px solid ${LINE}` }}>
-                  <div className="grid sm:grid-cols-4 gap-2 items-start">
-                    <select className={`${input} sm:col-span-2`} style={inputStyle} required value={it.product} onChange={(e) => onItemProduct(i, e.target.value)}>
-                      <option value="">Select product…</option>
-                      {products.map((x) => <option key={x._id} value={x._id}>{productLabel(x)}</option>)}
-                    </select>
-                    <select className={input} style={inputStyle} required disabled={!p} value={it.variantId} onChange={(e) => onItemVariant(i, e.target.value)}>
-                      <option value="">{p ? 'Variant…' : '—'}</option>
-                      {(p?.variants || []).map((v, vi) => <option key={v._id} value={v._id}>{variantLabel(v, vi)}</option>)}
-                    </select>
-                    <select className={input} style={inputStyle} required disabled={!variant} value={it.size} onChange={(e) => setItem(i, { size: e.target.value })}>
-                      <option value="">{variant ? `${optLabel(p)}…` : '—'}</option>
-                      {(variant?.sizes || []).map((s) => <option key={s.size} value={s.size}>{s.size} ({s.stock ?? 0} in stock)</option>)}
-                    </select>
-                  </div>
-                  <div className="flex items-center gap-3 mt-2 text-[12px]" style={{ color: INK_SOFT }}>
-                    <label className="flex items-center gap-1">
-                      Qty per combo
-                      <input type="number" min="1" max="50" className="w-16 px-2 py-1 text-sm outline-none" style={inputStyle} value={it.qty} onChange={(e) => setItem(i, { qty: e.target.value })} />
-                    </label>
-                    {stock !== null && (
-                      <span style={{ color: stock < qty ? RED : INK_SOFT }}>
-                        {stock < qty ? `Only ${stock} in stock — not enough for one combo` : `${stock} in stock → ${Math.floor(stock / qty)} combos`}
-                      </span>
-                    )}
-                    {missing && <span style={{ color: RED }}>This product isn&apos;t in your list (inactive or removed).</span>}
-                    {items.length > 1 && (
-                      <button type="button" onClick={() => removeAt(setItems)(i)} className="ml-auto" style={{ color: RED }}>Remove</button>
-                    )}
-                  </div>
-                </div>
-              );
-            })}
-            <button type="button" onClick={() => setItems((l) => [...l, emptyItem()])} className="text-[12px] underline" style={{ color: INK }}>
-              + Add product
-            </button>
-            {sellable !== null && (
-              <p className="text-[12px] mt-3" style={{ color: sellable > 0 ? INK : RED }}>
-                {sellable > 0 ? `Right now you can sell ${sellable} of this combo.` : 'This combo is currently out of stock.'}
-              </p>
-            )}
-          </Section>
-
-          <Section title="Pricing">
-            <div className="grid grid-cols-2 gap-3">
-              <Field label="Combo price (₹)">
-                <input type="number" min="1" className={input} style={inputStyle} required value={form.comboPrice} onChange={(e) => upd('comboPrice', e.target.value)} />
-              </Field>
-              <Field label="Original price (₹, optional)">
-                <input type="number" min="0" className={input} style={inputStyle} value={form.originalPrice} onChange={(e) => upd('originalPrice', e.target.value)} />
-              </Field>
-            </div>
-            {itemsTotal > 0 && (
-              <p className="text-[11px]" style={{ color: INK_SOFT }}>
-                The selected items add up to ₹{itemsTotal}
-                {comboPriceNum > 0 && itemsTotal > comboPriceNum ? ` — customers save ₹${itemsTotal - comboPriceNum}.` : '.'}{' '}
-                <button type="button" className="underline" onClick={() => upd('originalPrice', itemsTotal)}>Use as original price</button>
-                {' '}(left blank, this is filled in automatically).
-              </p>
-            )}
-          </Section>
-        </>
       )}
 
-      {/* ---------- colour pack ---------- */}
-      {!multi && (
-        <>
-          <Section title="Base product">
-            <select className={input} style={inputStyle} required value={form.baseProduct} onChange={(e) => onBaseChange(e.target.value)}>
-              <option value="">Select product…</option>
-              {products.map((x) => <option key={x._id} value={x._id}>{productLabel(x)}</option>)}
-            </select>
-          </Section>
+      {/* 1. Combo Type Segment */}
+      <div className="bg-white p-5 rounded-3xl border border-[#E7E2D6] shadow-xs space-y-3">
+        <h2 className="text-xs font-bold uppercase tracking-wider text-[#0F172A]">
+          1. Combo Configuration Type
+        </h2>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          {[
+            [
+              'multi-product',
+              'Multi-Product Curated Bundle',
+              'Bundle distinct products (e.g. matching outfit, gourmet food set, tech bundle) with transparent individual specifications and bundled savings.',
+            ],
+            [
+              'color-pack',
+              'Single-Product Multipack',
+              'Bulk quantity packs of a single item (e.g. 2-Pack, 3-Pack, 5-Pack) with volume-tiered discounts.',
+            ],
+          ].map(([value, label, hint]) => {
+            const checked = form.type === value || (value === 'multi-product' && form.type === 'bundle') || (value === 'color-pack' && form.type === 'multipack');
+            return (
+              <label
+                key={value}
+                className={`p-4 rounded-2xl cursor-pointer border transition-all ${
+                  checked
+                    ? 'border-[#0F172A] bg-[#FAF9F5] shadow-xs'
+                    : 'border-[#E7E2D6] bg-white hover:border-neutral-400'
+                }`}
+              >
+                <div className="flex items-center gap-2.5">
+                  <input
+                    type="radio"
+                    name="comboType"
+                    checked={checked}
+                    onChange={() => upd('type', value)}
+                    disabled={isEdit}
+                    className="text-[#0F172A] focus:ring-0"
+                  />
+                  <span className="font-bold text-xs sm:text-sm text-[#0F172A]">{label}</span>
+                </div>
+                <p className="text-[11px] text-[#64748B] mt-1.5 pl-6 leading-relaxed">{hint}</p>
+              </label>
+            );
+          })}
+        </div>
+      </div>
 
-          <Section title={`${entryWord}s`}>
-            <div className="flex items-center justify-between mb-2">
-              <p className="text-[11px]" style={{ color: INK_SOFT }}>
-                Link each entry to a variant of the product so its stock is checked and reduced. An entry with no link needs its own stock number.
+      {/* 2. Basic Information */}
+      <div className="bg-white p-5 rounded-3xl border border-[#E7E2D6] shadow-xs space-y-4">
+        <h2 className="text-xs font-bold uppercase tracking-wider text-[#0F172A]">
+          2. Basic Combo Information
+        </h2>
+
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <div className="sm:col-span-2">
+            <label className="block text-xs font-bold text-[#0F172A] uppercase tracking-wider mb-1">
+              Combo Offer Title *
+            </label>
+            <input
+              required
+              maxLength={120}
+              placeholder="e.g. Traditional Festive Sweet & Savory Hamper"
+              value={form.name}
+              onChange={(e) => upd('name', e.target.value)}
+              className={inputClass}
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs font-bold text-[#0F172A] uppercase tracking-wider mb-1">
+              Combo SKU / Barcode
+            </label>
+            <input
+              placeholder="e.g. CMB-FEST-01"
+              value={form.sku}
+              onChange={(e) => upd('sku', e.target.value)}
+              className={inputClass}
+            />
+          </div>
+        </div>
+
+        <div>
+          <label className="block text-xs font-bold text-[#0F172A] uppercase tracking-wider mb-1">
+            Offer Description
+          </label>
+          <textarea
+            rows={2}
+            placeholder="Detailed description of what is included in this value combo."
+            value={form.description}
+            onChange={(e) => upd('description', e.target.value)}
+            className={`${inputClass} resize-none`}
+          />
+        </div>
+
+        {/* Image Uploader */}
+        <div>
+          <label className="block text-xs font-bold text-[#0F172A] uppercase tracking-wider mb-2">
+            Combo Showcase Images
+          </label>
+          <ImageUploader value={form.images} onChange={(v) => upd('images', v)} />
+        </div>
+
+        <div className="pt-2 border-t border-[#F0EFE9]">
+          <label className="inline-flex items-center gap-2 cursor-pointer text-xs font-bold text-[#0F172A]">
+            <input
+              type="checkbox"
+              checked={form.isActive}
+              onChange={(e) => upd('isActive', e.target.checked)}
+              className="rounded text-[#0F172A] focus:ring-0"
+            />
+            <span>Active & Published on Marketplace</span>
+          </label>
+        </div>
+      </div>
+
+      {/* 3. Product Selection with Full Details */}
+      {isMulti && (
+        <div className="bg-white p-5 rounded-3xl border border-[#E7E2D6] shadow-xs space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-[#F0EFE9] pb-3">
+            <div>
+              <h2 className="text-xs font-bold uppercase tracking-wider text-[#0F172A]">
+                3. Products in this Bundle
+              </h2>
+              <p className="text-[11px] text-[#64748B]">
+                {mode === 'seller'
+                  ? 'Select only your own verified products. Cross-seller product mixing is blocked.'
+                  : 'Select products belonging to the official platform or one merchant.'}
               </p>
-              {base && (
-                <button type="button" onClick={() => importColors()} className="text-[12px] underline shrink-0 ml-3" style={{ color: INK }}>
-                  Import from product
-                </button>
-              )}
             </div>
-            {colors.map((x, i) => {
-              const variant = base?.variants?.find((v) => v._id === x.variantId);
-              const live = variant ? (x.size ? sizeStockOf(variant, x.size) : (variant.sizes || []).reduce((s, z) => s + (z.stock || 0), 0)) : null;
+            <button
+              type="button"
+              onClick={() => setItems((l) => [...l, emptyItem()])}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-[#FAF7EE] text-[#C9A227] border border-[#E7E2D6] hover:bg-[#F2ECE0] self-start"
+            >
+              <Plus size={14} />
+              <span>Add Product</span>
+            </button>
+          </div>
+
+          <div className="space-y-4">
+            {items.map((it, i) => {
+              const { p, variant, sizeObj, qty, stock, actualPrice, sellingPrice, image } = lineInfo[i];
               return (
-                <div key={i} className="p-3 mb-3" style={{ border: `1px solid ${LINE}` }}>
-                  <div className="grid grid-cols-2 sm:grid-cols-6 gap-2 items-center">
-                    <input className={`${input} sm:col-span-2`} style={inputStyle} placeholder={`${entryWord} name`} value={x.name} onChange={(e) => setColor(i, { name: e.target.value })} />
-                    <input type="color" aria-label="Colour swatch" hidden={!baseHasColors} className="w-full h-[38px]" style={{ border: `1px solid ${LINE}` }} value={x.hex || '#000000'} onChange={(e) => setColor(i, { hex: e.target.value })} />
-                    <select className={input} style={inputStyle} value={x.variantId} onChange={(e) => onColorVariant(i, e.target.value)}>
-                      <option value="">No variant link</option>
-                      {(base?.variants || []).map((v, vi) => <option key={v._id} value={v._id}>{variantLabel(v, vi)}</option>)}
-                    </select>
-                    <select className={input} style={inputStyle} value={x.size} disabled={!variant} onChange={(e) => setColor(i, { size: e.target.value })}>
-                      <option value="">Any {optLabel(base).toLowerCase()}</option>
-                      {(variant?.sizes || []).map((s) => <option key={s.size} value={s.size}>{s.size} ({s.stock ?? 0})</option>)}
-                    </select>
-                    <div className="flex gap-2 items-center">
-                      <input type="number" min="0" className={input} style={inputStyle} placeholder="Extra cap" title="Optional: limit how many pieces of this colour can be sold" value={x.stock} onChange={(e) => setColor(i, { stock: e.target.value })} />
-                      <button type="button" onClick={() => removeAt(setColors)(i)} style={{ color: RED }} className="text-[12px]" aria-label="Remove colour">×</button>
+                <div
+                  key={i}
+                  className="p-4 rounded-2xl border border-[#E7E2D6] bg-[#FCFBF8] space-y-3"
+                >
+                  <div className="grid grid-cols-1 sm:grid-cols-4 gap-3 items-start">
+                    {/* Product Selector */}
+                    <div className="sm:col-span-2">
+                      <label className="block text-[10px] font-bold text-[#64748B] uppercase mb-1">
+                        Product #{i + 1}
+                      </label>
+                      <select
+                        required
+                        value={it.product}
+                        onChange={(e) => onItemProduct(i, e.target.value)}
+                        className={inputClass}
+                      >
+                        <option value="">Select a product from catalog…</option>
+                        {products.map((prod) => (
+                          <option key={prod._id} value={prod._id}>
+                            {prod.name} ({prod.category?.name || 'General'})
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    {/* Variant Selector */}
+                    <div>
+                      <label className="block text-[10px] font-bold text-[#64748B] uppercase mb-1">
+                        Variant / Option
+                      </label>
+                      <select
+                        required
+                        disabled={!p}
+                        value={it.variantId}
+                        onChange={(e) => onItemVariant(i, e.target.value)}
+                        className={inputClass}
+                      >
+                        <option value="">{p ? 'Select variant…' : '—'}</option>
+                        {(p?.variants || []).map((v, vi) => (
+                          <option key={v._id} value={v._id}>
+                            {v.color || `Option ${vi + 1}`}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    {/* Size / Option Selector */}
+                    <div>
+                      <label className="block text-[10px] font-bold text-[#64748B] uppercase mb-1">
+                        {p ? optLabel(p) : 'Size / Pack'}
+                      </label>
+                      <select
+                        required
+                        disabled={!variant}
+                        value={it.size}
+                        onChange={(e) => setItem(i, { size: e.target.value })}
+                        className={inputClass}
+                      >
+                        <option value="">{variant ? 'Select size…' : '—'}</option>
+                        {(variant?.sizes || []).map((s) => (
+                          <option key={s.size} value={s.size}>
+                            {s.size} ({s.stock ?? 0} in stock)
+                          </option>
+                        ))}
+                      </select>
                     </div>
                   </div>
-                  {live !== null && <p className="text-[11px] mt-1" style={{ color: INK_SOFT }}>Live stock from the product: {live} pieces</p>}
-                  {!x.variantId && x.name && x.stock === '' && <p className="text-[11px] mt-1" style={{ color: RED }}>Link a variant or enter a stock number.</p>}
+
+                  {/* Product Specification & Stock Pill Card */}
+                  {p && (
+                    <div className="pt-2 border-t border-[#EAE7DC] flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+                      <div className="flex items-center gap-3">
+                        {image && (
+                          <div className="w-12 h-12 rounded-xl overflow-hidden bg-white border border-[#E7E2D6] shrink-0">
+                            <img src={image} alt={p.name} className="w-full h-full object-cover" />
+                          </div>
+                        )}
+                        <div>
+                          <div className="font-bold text-[#0F172A]">{p.name}</div>
+                          <div className="text-[11px] text-[#64748B] flex items-center gap-2">
+                            {p.brand && <span>Brand: {p.brand}</span>}
+                            {p.sku && <span>SKU: {p.sku}</span>}
+                            <span className="font-semibold text-emerald-700">
+                              Unit Price: ₹{sellingPrice}
+                            </span>
+                            {actualPrice > sellingPrice && (
+                              <span className="line-through text-neutral-400">₹{actualPrice}</span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Quantity & Stock Check */}
+                      <div className="flex items-center gap-3 self-end sm:self-auto">
+                        <label className="inline-flex items-center gap-1.5 font-bold text-[#0F172A]">
+                          <span>Qty:</span>
+                          <input
+                            type="number"
+                            min="1"
+                            max="50"
+                            value={it.qty}
+                            onChange={(e) => setItem(i, { qty: e.target.value })}
+                            className="w-14 px-2 py-1 text-xs rounded-lg border border-[#D6D6D6] text-center"
+                          />
+                        </label>
+
+                        {stock !== null && (
+                          <span
+                            className={`px-2.5 py-1 rounded-full text-[11px] font-bold ${
+                              stock >= qty
+                                ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                                : 'bg-rose-50 text-rose-700 border border-rose-200'
+                            }`}
+                          >
+                            {stock >= qty
+                              ? `${stock} in stock (${Math.floor(stock / qty)} combos)`
+                              : `Out of Stock (${stock} avail)`}
+                          </span>
+                        )}
+
+                        {items.length > 1 && (
+                          <button
+                            type="button"
+                            onClick={() => removeAt(setItems)(i)}
+                            className="p-1 text-neutral-400 hover:text-red-600 rounded-lg"
+                            title="Remove product"
+                          >
+                            <Trash2 size={15} />
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  )}
                 </div>
               );
             })}
-            <button type="button" onClick={() => setColors((l) => [...l, emptyColor()])} className="text-[12px] underline" style={{ color: INK }}>
-              + Add {entryWord.toLowerCase()}
-            </button>
-          </Section>
+          </div>
 
-          <Section title="Pack options">
-            <p className="text-[11px] mb-2" style={{ color: INK_SOFT }}>
-              Pieces per pack and the price of that pack. Leave stock blank for unlimited packs (colour stock still applies).
-            </p>
+          {/* Bundle Inventory Status Card */}
+          {sellableStock !== null && (
+            <div
+              className={`p-4 rounded-2xl border text-xs flex items-center justify-between ${
+                sellableStock > 0
+                  ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                  : 'bg-rose-50 text-rose-800 border-rose-200'
+              }`}
+            >
+              <div className="flex items-center gap-2">
+                {sellableStock > 0 ? (
+                  <CheckCircle2 size={16} className="text-emerald-600 shrink-0" />
+                ) : (
+                  <AlertTriangle size={16} className="text-rose-600 shrink-0" />
+                )}
+                <span>
+                  {sellableStock > 0
+                    ? `Live Available Combos: ${sellableStock} units (Limited by: ${limitingProduct})`
+                    : `Unavailable: One or more products in this combo are currently out of stock.`}
+                </span>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* 4. Pricing & Savings Calculations */}
+      {isMulti && (
+        <div className="bg-white p-5 rounded-3xl border border-[#E7E2D6] shadow-xs space-y-4">
+          <h2 className="text-xs font-bold uppercase tracking-wider text-[#0F172A]">
+            4. Pricing & Discount Rules
+          </h2>
+
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div>
+              <label className="block text-xs font-bold text-[#0F172A] uppercase tracking-wider mb-1">
+                Discount Mode
+              </label>
+              <select
+                value={form.discountType}
+                onChange={(e) => upd('discountType', e.target.value)}
+                className={inputClass}
+              >
+                <option value="fixed">Fixed Price / Savings (₹)</option>
+                <option value="percentage">Percentage Discount (%)</option>
+              </select>
+            </div>
+
+            {form.discountType === 'percentage' ? (
+              <div>
+                <label className="block text-xs font-bold text-[#0F172A] uppercase tracking-wider mb-1">
+                  Discount Percentage (%)
+                </label>
+                <input
+                  type="number"
+                  min="1"
+                  max="99"
+                  placeholder="e.g. 20"
+                  value={form.discountValue}
+                  onChange={(e) => upd('discountValue', e.target.value)}
+                  className={inputClass}
+                />
+              </div>
+            ) : (
+              <div>
+                <label className="block text-xs font-bold text-[#0F172A] uppercase tracking-wider mb-1">
+                  Combo Selling Price (₹) *
+                </label>
+                <input
+                  type="number"
+                  min="1"
+                  required
+                  placeholder="e.g. 1499"
+                  value={form.comboPrice}
+                  onChange={(e) => {
+                    upd('comboPrice', e.target.value);
+                    upd('discountValue', '');
+                  }}
+                  className={inputClass}
+                />
+              </div>
+            )}
+
+            <div>
+              <label className="block text-xs font-bold text-[#0F172A] uppercase tracking-wider mb-1">
+                Original Items Total
+              </label>
+              <div className="px-3.5 py-2.5 rounded-xl bg-[#FAF9F5] border border-[#E7E2D6] font-bold text-sm text-[#0F172A]">
+                ₹{itemsTotal}
+              </div>
+            </div>
+          </div>
+
+          {/* Real-time Savings Breakdown Banner */}
+          {itemsTotal > 0 && (
+            <div className="p-4 rounded-2xl bg-[#FAF7EE] border border-[#E7E2D6] grid grid-cols-2 sm:grid-cols-4 gap-3 text-center">
+              <div>
+                <div className="text-[10px] uppercase font-bold text-[#64748B]">Individual Items Total</div>
+                <div className="text-sm font-bold text-[#0F172A]">₹{itemsTotal}</div>
+              </div>
+              <div>
+                <div className="text-[10px] uppercase font-bold text-[#64748B]">Combo Price</div>
+                <div className="text-sm font-extrabold text-[#C9A227]">
+                  ₹{calculatedComboPrice}
+                </div>
+              </div>
+              <div>
+                <div className="text-[10px] uppercase font-bold text-[#64748B]">Customer Savings</div>
+                <div className="text-sm font-bold text-emerald-700">₹{savingsAmount}</div>
+              </div>
+              <div>
+                <div className="text-[10px] uppercase font-bold text-[#64748B]">Discount Rate</div>
+                <div className="text-sm font-extrabold text-emerald-700">
+                  {savingsPercentage}% OFF
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* 5. Multipack Options for Single-Product Pack */}
+      {!isMulti && (
+        <div className="bg-white p-5 rounded-3xl border border-[#E7E2D6] shadow-xs space-y-4">
+          <h2 className="text-xs font-bold uppercase tracking-wider text-[#0F172A]">
+            3. Base Product & Multipack Options
+          </h2>
+
+          <div>
+            <label className="block text-xs font-bold text-[#0F172A] uppercase tracking-wider mb-1">
+              Select Base Catalog Product *
+            </label>
+            <select
+              required
+              value={form.baseProduct}
+              onChange={(e) => onBaseChange(e.target.value)}
+              className={inputClass}
+            >
+              <option value="">Select product…</option>
+              {products.map((p) => (
+                <option key={p._id} value={p._id}>
+                  {p.name} ({p.category?.name || 'General'})
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Pack Options */}
+          <div className="pt-2 space-y-3">
+            <div className="flex items-center justify-between">
+              <label className="text-xs font-bold uppercase tracking-wider text-[#0F172A]">
+                Pack Quantity Tiers (e.g. 2-Pack, 3-Pack, 5-Pack)
+              </label>
+              <button
+                type="button"
+                onClick={() => setPacks((l) => [...l, emptyPack()])}
+                className="text-xs font-bold text-[#C9A227] hover:underline"
+              >
+                + Add Pack Tier
+              </button>
+            </div>
+
             {packs.map((p, i) => (
-              <div key={i} className="p-3 mb-3 grid grid-cols-2 sm:grid-cols-4 gap-2 items-center" style={{ border: `1px solid ${LINE}` }}>
-                <input type="number" min="1" className={input} style={inputStyle} placeholder="Pieces (e.g. 5)" value={p.size} onChange={(e) => setPack(i, { size: e.target.value })} />
-                <input type="number" min="1" className={input} style={inputStyle} placeholder="Pack price ₹" value={p.price} onChange={(e) => setPack(i, { price: e.target.value })} />
-                <input type="number" min="0" className={input} style={inputStyle} placeholder="Original price ₹" value={p.originalPrice} onChange={(e) => setPack(i, { originalPrice: e.target.value })} />
-                <div className="flex gap-2 items-center">
-                  <input type="number" min="0" className={input} style={inputStyle} placeholder="Packs in stock" value={p.stock} onChange={(e) => setPack(i, { stock: e.target.value })} />
+              <div
+                key={i}
+                className="p-3.5 rounded-2xl border border-[#E7E2D6] bg-[#FCFBF8] grid grid-cols-2 sm:grid-cols-4 gap-3 items-center"
+              >
+                <div>
+                  <label className="block text-[10px] font-bold text-[#64748B] uppercase mb-0.5">
+                    Pieces in Pack
+                  </label>
+                  <input
+                    type="number"
+                    min="1"
+                    placeholder="e.g. 3"
+                    value={p.size}
+                    onChange={(e) => setPack(i, { size: e.target.value })}
+                    className={inputClass}
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-bold text-[#64748B] uppercase mb-0.5">
+                    Pack Selling Price (₹)
+                  </label>
+                  <input
+                    type="number"
+                    min="1"
+                    placeholder="₹"
+                    value={p.price}
+                    onChange={(e) => setPack(i, { price: e.target.value })}
+                    className={inputClass}
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-bold text-[#64748B] uppercase mb-0.5">
+                    Original Price (₹)
+                  </label>
+                  <input
+                    type="number"
+                    min="0"
+                    placeholder="₹"
+                    value={p.originalPrice}
+                    onChange={(e) => setPack(i, { originalPrice: e.target.value })}
+                    className={inputClass}
+                  />
+                </div>
+                <div className="flex items-center gap-2">
+                  <div className="flex-1">
+                    <label className="block text-[10px] font-bold text-[#64748B] uppercase mb-0.5">
+                      Packs in Stock
+                    </label>
+                    <input
+                      type="number"
+                      min="0"
+                      placeholder="Unlimited"
+                      value={p.stock}
+                      onChange={(e) => setPack(i, { stock: e.target.value })}
+                      className={inputClass}
+                    />
+                  </div>
                   {packs.length > 1 && (
-                    <button type="button" onClick={() => removeAt(setPacks)(i)} style={{ color: RED }} className="text-[12px]" aria-label="Remove pack option">×</button>
+                    <button
+                      type="button"
+                      onClick={() => removeAt(setPacks)(i)}
+                      className="p-1.5 text-neutral-400 hover:text-red-600 rounded-lg mt-4"
+                    >
+                      <Trash2 size={16} />
+                    </button>
                   )}
                 </div>
               </div>
             ))}
-            <button type="button" onClick={() => setPacks((l) => [...l, emptyPack()])} className="text-[12px] underline" style={{ color: INK }}>
-              + Add pack option
-            </button>
-          </Section>
-
-          {baseIsApparel && (
-          <Section title="Size chart (optional)">
-            {chart.map((r, i) => (
-              <div key={i} className="grid grid-cols-5 gap-2 mb-2 items-center">
-                {['size', 'chest', 'waist', 'length'].map((k) => (
-                  <input key={k} className={input} style={inputStyle} placeholder={k[0].toUpperCase() + k.slice(1)} value={r[k]} onChange={(e) => setRow(i, { [k]: e.target.value })} />
-                ))}
-                <button type="button" onClick={() => removeAt(setChart)(i)} style={{ color: RED }} className="text-[12px]" aria-label="Remove row">×</button>
-              </div>
-            ))}
-            <button type="button" onClick={() => setChart((l) => [...l, emptyChartRow()])} className="text-[12px] underline" style={{ color: INK }}>
-              + Add row
-            </button>
-          </Section>
-          )}
-        </>
+          </div>
+        </div>
       )}
 
-      <div className="flex gap-3">
+      {/* Action Buttons */}
+      <div className="flex items-center gap-3 pt-2">
         <button
           type="submit"
           disabled={saving}
-          className="flex-1 py-3 text-[13px] tracking-[1.5px] uppercase"
-          style={{ background: INK, color: PAPER, opacity: saving ? 0.6 : 1 }}
+          className="flex-1 py-3.5 rounded-2xl text-xs font-bold bg-[#0F172A] text-white hover:bg-neutral-800 shadow-sm transition-all disabled:opacity-50"
         >
-          {saving ? 'Saving...' : isEdit ? 'Save Changes' : 'Create Combo'}
+          {saving ? 'Saving Combo Offer…' : isEdit ? 'Save Changes' : 'Create & Publish Combo'}
         </button>
         {onCancel && (
-          <button type="button" onClick={onCancel} className="px-6 py-3 text-[13px] tracking-[1.5px] uppercase" style={{ border: `1px solid ${INK}`, color: INK }}>
+          <button
+            type="button"
+            onClick={onCancel}
+            className="px-6 py-3.5 rounded-2xl text-xs font-bold border border-[#D6D6D6] text-[#64748B] hover:text-[#0F172A]"
+          >
             Cancel
           </button>
         )}
@@ -450,13 +908,10 @@ export default function ComboForm({ mode = 'seller', comboId, initialCombo, onSa
   );
 }
 
-/* ---------- helpers ---------- */
-
-// `value` is an ARRAY of URLs. (The old comma-joined string broke any URL containing a comma.)
+// Image Uploader Helper
 function ImageUploader({ value, onChange }) {
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState('');
-  const [pasted, setPasted] = useState('');
   const urls = value || [];
 
   async function onFiles(e) {
@@ -483,78 +938,40 @@ function ImageUploader({ value, onChange }) {
     setUploading(false);
   }
 
-  function addPasted() {
-    const url = pasted.trim();
-    if (!url) return;
-    onChange([...urls, url]);
-    setPasted('');
-  }
-
-  const makeCover = (i) => onChange([urls[i], ...urls.filter((_, idx) => idx !== i)]);
-
   return (
     <div>
       {urls.length > 0 && (
-        <div className="flex flex-wrap gap-2 mb-2">
+        <div className="flex flex-wrap gap-2.5 mb-3">
           {urls.map((url, i) => (
-            <div key={url + i} className="relative" style={{ width: 80, height: 80, border: `1px solid ${i === 0 ? GOLD : LINE}` }}>
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={url} alt="" className="w-full h-full object-cover" />
+            <div
+              key={url + i}
+              className="relative w-20 h-20 rounded-xl overflow-hidden border border-[#E7E2D6] shadow-xs group"
+            >
+              <img src={url} alt="Combo preview" className="w-full h-full object-cover" />
               <button
                 type="button"
                 onClick={() => onChange(urls.filter((_, idx) => idx !== i))}
-                className="absolute top-0 right-0 w-5 h-5 text-[12px] leading-none"
-                style={{ background: INK, color: PAPER }}
-                aria-label="Remove image"
-              >×</button>
-              {i === 0 ? (
-                <span className="absolute bottom-0 left-0 right-0 text-[9px] text-center py-0.5" style={{ background: GOLD, color: INK }}>Cover</span>
-              ) : (
-                <button type="button" onClick={() => makeCover(i)} className="absolute bottom-0 left-0 right-0 text-[9px] text-center py-0.5" style={{ background: 'rgba(0,0,0,.65)', color: PAPER }}>
-                  Make cover
-                </button>
+                className="absolute top-1 right-1 w-5 h-5 rounded-full bg-black/75 text-white flex items-center justify-center text-xs opacity-0 group-hover:opacity-100 transition-opacity"
+              >
+                <X size={12} />
+              </button>
+              {i === 0 && (
+                <span className="absolute bottom-0 inset-x-0 bg-[#C9A227] text-black text-[9px] font-bold text-center py-0.5">
+                  Cover
+                </span>
               )}
             </div>
           ))}
         </div>
       )}
-      <label
-        className="inline-block px-3 py-2 text-[12px] tracking-[1px] uppercase cursor-pointer"
-        style={{ border: `1px solid ${INK}`, color: INK, opacity: uploading ? 0.6 : 1 }}
-      >
-        {uploading ? 'Uploading...' : 'Upload Images'}
+
+      <label className="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold border border-[#D6D6D6] hover:border-black cursor-pointer bg-white transition-colors">
+        <Upload size={14} />
+        <span>{uploading ? 'Uploading…' : 'Upload Images'}</span>
         <input type="file" accept="image/*" multiple onChange={onFiles} disabled={uploading} className="hidden" />
       </label>
-      <div className="flex gap-2 mt-2">
-        <input
-          value={pasted}
-          onChange={(e) => setPasted(e.target.value)}
-          onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addPasted(); } }}
-          className="flex-1 px-3 py-2 text-sm outline-none"
-          style={inputStyle}
-          placeholder="or paste one image URL"
-        />
-        <button type="button" onClick={addPasted} className="px-3 text-[12px] uppercase" style={{ border: `1px solid ${INK}`, color: INK }}>Add</button>
-      </div>
-      {uploadError && <p className="text-[12px] mt-1" style={{ color: RED }}>{uploadError}</p>}
-    </div>
-  );
-}
 
-function Section({ title, children }) {
-  return (
-    <div>
-      <h2 className="text-[13px] tracking-[1.5px] uppercase mb-3" style={{ color: INK }}>{title}</h2>
-      {children}
-    </div>
-  );
-}
-
-function Field({ label, children }) {
-  return (
-    <div className="mb-3">
-      <label className="block text-[11px] tracking-[1px] uppercase mb-1" style={{ color: INK_SOFT }}>{label}</label>
-      {children}
+      {uploadError && <p className="text-xs text-red-600 mt-1">{uploadError}</p>}
     </div>
   );
 }

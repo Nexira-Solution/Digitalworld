@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useMemo } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import {
@@ -13,28 +13,34 @@ import {
   Clock,
   XCircle,
   AlertCircle,
-  Pencil,
   Trash2,
   ExternalLink,
   Loader2,
   Save,
   Send,
   HelpCircle,
+  Truck,
+  FileText,
+  ShieldCheck,
+  Building,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
-
-const INK = '#000000';
-const INK_SOFT = '#6B6B6B';
-const GOLD = '#C9A227';
-const LINE = '#E8E8E8';
-const PAPER = '#FFFFFF';
+import {
+  validatePhone,
+  validateGSTIN,
+  validatePincode,
+  validateBankAccount,
+  validateIFSC,
+  validateFSSAI,
+  isFoodCategory,
+} from '@/lib/sellerValidation';
 
 const DOC_TYPES = [
-  { key: 'gst_certificate', label: 'GST Registration Certificate', desc: 'Form GST REG-06 or certificate' },
-  { key: 'pan_card', label: 'Business / Proprietor PAN Card', desc: 'Clear copy of valid PAN card' },
-  { key: 'shop_license', label: 'Shop & Establishment License', desc: 'Trade license or municipal certificate' },
-  { key: 'bank_proof', label: 'Bank Account Proof', desc: 'Cancelled cheque or first page of passbook' },
-  { key: 'fssai_license', label: 'FSSAI License (for food sellers)', desc: 'FSSAI registration or state license' },
+  { key: 'pan_card', label: 'Business / Proprietor PAN Card', desc: 'Clear copy of valid PAN card (PDF, JPG, PNG)', required: true },
+  { key: 'gst_certificate', label: 'GST Registration Certificate', desc: 'Form GST REG-06 or certificate', required: false },
+  { key: 'cancelled_cheque', label: 'Cancelled Cheque / Bank Proof', desc: 'Cancelled cheque showing name, account & IFSC', required: true },
+  { key: 'fssai_certificate', label: 'FSSAI Certificate (Food & Groceries)', desc: 'Mandatory for food, snack, sweet, grocery merchants', required: false },
+  { key: 'address_proof', label: 'Business Address Proof', desc: 'Electricity bill, lease agreement or municipal trade license', required: true },
 ];
 
 export default function SellerProfilePage() {
@@ -50,9 +56,11 @@ export default function SellerProfilePage() {
   const [documents, setDocuments] = useState([]);
   const [completion, setCompletion] = useState(0);
 
-  // Upload modal / trigger state
-  const [uploadDocType, setUploadDocType] = useState('gst_certificate');
-  const [uploading, setUploading] = useState(false);
+  // Bank account confirmation
+  const [confirmAccountNumber, setConfirmAccountNumber] = useState('');
+
+  // Uploading state tracking by document type
+  const [uploadingDoc, setUploadingDoc] = useState(null);
 
   const loadData = useCallback(async () => {
     try {
@@ -69,6 +77,9 @@ export default function SellerProfilePage() {
         setProfile(data.profile || {});
         setDocuments(data.documents || []);
         setCompletion(data.completion || 0);
+        if (data.profile?.bankDetails?.accountNumber) {
+          setConfirmAccountNumber(data.profile.bankDetails.accountNumber);
+        }
       }
     } catch (err) {
       console.error('Error loading seller profile:', err);
@@ -81,7 +92,7 @@ export default function SellerProfilePage() {
     loadData();
   }, [loadData]);
 
-  // Handle Form changes
+  // Form updates
   function updateSellerField(key, value) {
     setSeller((prev) => ({ ...prev, [key]: value }));
   }
@@ -111,11 +122,65 @@ export default function SellerProfilePage() {
     }));
   }
 
+  // Real-time Field Validations (Feature 8)
+  const validationErrors = useMemo(() => {
+    const errors = {};
+
+    // Phone
+    if (seller?.businessPhone) {
+      const err = validatePhone(seller.businessPhone);
+      if (err) errors.businessPhone = err;
+    }
+
+    // GSTIN
+    if (seller?.gstNumber) {
+      const err = validateGSTIN(seller.gstNumber);
+      if (err) errors.gstNumber = err;
+    }
+
+    // Pincode
+    if (profile.pickupAddress?.pincode) {
+      const err = validatePincode(profile.pickupAddress.pincode);
+      if (err) errors.pickupPincode = err;
+    }
+
+    // Bank Account
+    if (profile.bankDetails?.accountNumber) {
+      const err = validateBankAccount(
+        profile.bankDetails.accountNumber,
+        confirmAccountNumber
+      );
+      if (err) errors.accountNumber = err;
+    }
+
+    // IFSC
+    if (profile.bankDetails?.ifscCode) {
+      const err = validateIFSC(profile.bankDetails.ifscCode);
+      if (err) errors.ifscCode = err;
+    }
+
+    // FSSAI
+    const category = profile.category || '';
+    if (profile.fssaiNumber || isFoodCategory(category)) {
+      const err = validateFSSAI(profile.fssaiNumber, category);
+      if (err) errors.fssaiNumber = err;
+    }
+
+    return errors;
+  }, [seller, profile, confirmAccountNumber]);
+
   // Save changes to backend
   async function handleSave(e) {
     if (e) e.preventDefault();
-    setSaving(true);
 
+    // Check errors
+    const errorKeys = Object.keys(validationErrors);
+    if (errorKeys.length > 0) {
+      toast.error(validationErrors[errorKeys[0]]);
+      return;
+    }
+
+    setSaving(true);
     try {
       const payload = {
         name: seller.name,
@@ -126,10 +191,18 @@ export default function SellerProfilePage() {
         gstNumber: seller.gstNumber,
         description: profile.description,
         category: profile.category,
+        fssaiNumber: profile.fssaiNumber,
+        panNumber: profile.panNumber,
         website: profile.website,
+        deliveryCharge: Number(profile.deliveryCharge) || 0,
+        freeDeliveryThreshold: Number(profile.freeDeliveryThreshold) || 0,
+        minOrderValue: Number(profile.minOrderValue) || 0,
         pickupAddress: profile.pickupAddress,
         returnAddress: profile.returnAddress,
-        bankDetails: profile.bankDetails,
+        bankDetails: {
+          ...profile.bankDetails,
+          confirmAccountNumber,
+        },
       };
 
       const res = await fetch('/api/seller/profile', {
@@ -141,7 +214,7 @@ export default function SellerProfilePage() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Failed to save');
 
-      toast.success('Profile details saved successfully!');
+      toast.success('Profile saved with verified standards!');
       setSeller(data.seller);
       setProfile(data.profile);
       setCompletion(data.completion);
@@ -152,32 +225,18 @@ export default function SellerProfilePage() {
     }
   }
 
-  // Submit profile for verification
-  async function handleSubmitVerification() {
-    setSubmittingVerification(true);
-    try {
-      // First save any unsaved changes
-      await handleSave();
-
-      const res = await fetch('/api/seller/profile/submit', { method: 'POST' });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Failed to submit');
-
-      toast.success(data.message || 'Submitted for verification!');
-      loadData();
-    } catch (err) {
-      toast.error(err.message || 'Submission error');
-    } finally {
-      setSubmittingVerification(false);
-    }
-  }
-
   // Document upload handler
   async function handleDocUpload(e, docType) {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    setUploading(true);
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error('Document file exceeds 5 MB limit. Please upload a smaller file.');
+      e.target.value = '';
+      return;
+    }
+
+    setUploadingDoc(docType);
     const fd = new FormData();
     fd.append('file', file);
     fd.append('documentType', docType);
@@ -190,19 +249,18 @@ export default function SellerProfilePage() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Upload failed');
 
-      toast.success(data.message || 'Document uploaded successfully!');
+      toast.success('Document uploaded successfully!');
       loadData();
     } catch (err) {
       toast.error(err.message || 'Upload error');
     } finally {
-      setUploading(false);
+      setUploadingDoc(null);
       e.target.value = '';
     }
   }
 
-  // Delete Document
   async function handleDeleteDoc(docId) {
-    if (!confirm('Are you sure you want to remove this document?')) return;
+    if (!confirm('Are you sure you want to remove this verification document?')) return;
     try {
       const res = await fetch(`/api/seller/documents/${docId}`, { method: 'DELETE' });
       const data = await res.json();
@@ -227,99 +285,87 @@ export default function SellerProfilePage() {
   const verStatus = seller?.profileVerificationStatus || 'not_submitted';
 
   return (
-    <div className="max-w-5xl mx-auto space-y-6">
+    <div className="max-w-5xl mx-auto space-y-6 pb-20">
       {/* Top Profile Card */}
-      <div className="bg-white rounded-2xl border border-[#E8E8E8] p-6 shadow-xs flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
+      <div className="bg-white rounded-3xl border border-[#E7E2D6] p-6 shadow-xs flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
         <div className="flex items-center gap-4">
           <div className="w-16 h-16 rounded-2xl bg-[#FAF7F0] border border-[#E7E2D6] flex items-center justify-center text-2xl font-bold text-[#C9A227]">
             {seller?.businessName?.[0] || 'S'}
           </div>
           <div>
             <div className="flex items-center gap-2 flex-wrap">
-              <h1 className="text-xl font-bold text-[#000000]">
+              <h1 className="text-xl font-bold text-[#0F172A]">
                 {seller?.businessName || seller?.name || 'Seller Profile'}
               </h1>
-              <span className="text-[10px] font-bold uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-[#E3F3E8] text-[#1B8A3E]">
-                Active Seller
-              </span>
+              {seller?.status === 'approved' && (
+                <span className="inline-flex items-center gap-1 text-[11px] font-bold bg-emerald-50 text-emerald-700 px-2.5 py-0.5 rounded-full border border-emerald-200">
+                  <CheckCircle2 size={12} />
+                  <span>Approved Merchant</span>
+                </span>
+              )}
             </div>
-            <p className="text-xs text-[#6B6B6B] mt-0.5">
-              Owner: {seller?.name} • {seller?.email} • Ph: {seller?.businessPhone}
+            <p className="text-xs text-[#64748B] mt-0.5">
+              Account: {seller?.email} • ID: {seller?._id}
             </p>
           </div>
         </div>
 
-        {/* Profile Completion & Verification Pill */}
-        <div className="w-full md:w-64 space-y-2">
-          <div className="flex justify-between items-center text-xs">
-            <span className="font-semibold text-[#1A1A1A]">Profile Completion</span>
-            <span className="font-bold text-[#C9A227]">{completion}%</span>
+        {/* Completion Progress Bar */}
+        <div className="w-full md:w-56 bg-[#FAF9F5] p-3.5 rounded-2xl border border-[#E7E2D6]">
+          <div className="flex justify-between items-center text-xs font-bold mb-1.5">
+            <span className="text-[#64748B]">Profile Verification</span>
+            <span className="text-[#C9A227]">{completion}%</span>
           </div>
-          <div className="h-2 w-full bg-[#EEEEEE] rounded-full overflow-hidden">
+          <div className="w-full h-2 rounded-full bg-[#E8E8E8] overflow-hidden">
             <div
-              className="h-full bg-[#C9A227] rounded-full transition-all duration-500"
+              className="h-full rounded-full transition-all duration-500 bg-[#C9A227]"
               style={{ width: `${completion}%` }}
             />
-          </div>
-          <div className="flex items-center justify-between pt-1 text-[11px]">
-            <span className="text-[#6B6B6B]">Verification:</span>
-            {verStatus === 'verified' ? (
-              <span className="font-bold text-[#1B8A3E] flex items-center gap-1">
-                <CheckCircle2 size={12} /> Verified Seller
-              </span>
-            ) : verStatus === 'in_review' ? (
-              <span className="font-bold text-[#C9A227] flex items-center gap-1">
-                <Clock size={12} /> Under Review
-              </span>
-            ) : verStatus === 'rejected' ? (
-              <span className="font-bold text-[#B3261E] flex items-center gap-1">
-                <XCircle size={12} /> Verification Failed
-              </span>
-            ) : (
-              <span className="font-semibold text-[#8A6D1B]">Pending Submission</span>
-            )}
           </div>
         </div>
       </div>
 
-      {/* Navigation Tabs */}
-      <div className="flex border-b border-[#E8E8E8] gap-2 overflow-x-auto no-scrollbar">
+      {/* Tabs Navigation */}
+      <div className="flex items-center gap-2 overflow-x-auto pb-1 no-scrollbar border-b border-[#E7E2D6]">
         {[
-          { id: 'business', label: 'Business Details', icon: Store },
-          { id: 'address', label: 'Pickup & Returns', icon: MapPin },
-          { id: 'bank', label: 'Bank Account', icon: Landmark },
-          { id: 'documents', label: 'Documents & Verification', icon: FileCheck },
-        ].map((t) => {
-          const Icon = t.icon;
-          const isActive = activeTab === t.id;
+          { key: 'business', label: 'Business Profile', icon: Store },
+          { key: 'address', label: 'Pickup & Returns', icon: MapPin },
+          { key: 'bank', label: 'Bank & Payouts', icon: Landmark },
+          { key: 'documents', label: 'Documents & Verification', icon: FileCheck },
+          { key: 'delivery', label: 'Delivery Charges', icon: Truck },
+        ].map((tab) => {
+          const Icon = tab.icon;
+          const active = activeTab === tab.key;
           return (
             <button
-              key={t.id}
+              key={tab.key}
               type="button"
-              onClick={() => setActiveTab(t.id)}
-              className={`flex items-center gap-2 px-5 py-3 text-xs font-bold transition-all border-b-2 whitespace-nowrap ${
-                isActive
-                  ? 'border-[#000000] text-[#000000] bg-neutral-50 rounded-t-lg'
-                  : 'border-transparent text-[#6B6B6B] hover:text-[#000000]'
+              onClick={() => setActiveTab(tab.key)}
+              className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all shrink-0 ${
+                active
+                  ? 'bg-[#0F172A] text-white shadow-xs'
+                  : 'bg-white text-[#64748B] hover:text-[#0F172A] border border-[#E7E2D6]'
               }`}
             >
-              <Icon size={15} className={isActive ? 'text-[#C9A227]' : ''} />
-              <span>{t.label}</span>
+              <Icon size={14} />
+              <span>{tab.label}</span>
             </button>
           );
         })}
       </div>
 
-      {/* Tab 1: Business Details */}
+      {/* Tab 1: Business Profile */}
       {activeTab === 'business' && (
-        <div className="bg-white rounded-2xl border border-[#E8E8E8] p-6 shadow-xs space-y-4">
-          <h2 className="text-sm font-bold uppercase tracking-wider text-[#000000]">
-            Business Information
+        <div className="bg-white rounded-3xl border border-[#E7E2D6] p-6 shadow-xs space-y-4">
+          <h2 className="text-sm font-bold uppercase tracking-wider text-[#0F172A]">
+            Merchant Business Information
           </h2>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
-              <label className="block text-xs font-semibold text-[#1A1A1A] mb-1">Owner Full Name</label>
+              <label className="block text-xs font-bold text-[#0F172A] uppercase tracking-wider mb-1">
+                Proprietor / Contact Name *
+              </label>
               <input
                 type="text"
                 value={seller?.name || ''}
@@ -329,7 +375,9 @@ export default function SellerProfilePage() {
             </div>
 
             <div>
-              <label className="block text-xs font-semibold text-[#1A1A1A] mb-1">Shop / Brand Name</label>
+              <label className="block text-xs font-bold text-[#0F172A] uppercase tracking-wider mb-1">
+                Shop / Business Trade Name *
+              </label>
               <input
                 type="text"
                 value={seller?.businessName || ''}
@@ -338,203 +386,202 @@ export default function SellerProfilePage() {
               />
             </div>
 
+            {/* Phone with 10-digit Indian validation */}
             <div>
-              <label className="block text-xs font-semibold text-[#1A1A1A] mb-1">Business Phone</label>
+              <label className="block text-xs font-bold text-[#0F172A] uppercase tracking-wider mb-1">
+                Business Mobile Number (10 Digits) *
+              </label>
               <input
-                type="text"
+                type="tel"
+                maxLength={10}
+                placeholder="9876543210"
                 value={seller?.businessPhone || ''}
-                onChange={(e) => updateSellerField('businessPhone', e.target.value)}
-                className="w-full px-3.5 py-2.5 text-xs rounded-xl border border-[#D6D6D6] outline-none focus:border-black"
+                onChange={(e) => updateSellerField('businessPhone', e.target.value.replace(/\D/g, ''))}
+                className={`w-full px-3.5 py-2.5 text-xs rounded-xl border font-mono outline-none ${
+                  validationErrors.businessPhone
+                    ? 'border-red-400 bg-red-50 text-red-700'
+                    : 'border-[#D6D6D6] focus:border-black'
+                }`}
               />
+              {validationErrors.businessPhone ? (
+                <p className="text-[11px] text-red-600 mt-1">{validationErrors.businessPhone}</p>
+              ) : (
+                <p className="text-[10px] text-[#64748B] mt-1">Must start with 6, 7, 8, or 9.</p>
+              )}
             </div>
 
+            {/* GSTIN with 15-character validation */}
             <div>
-              <label className="block text-xs font-semibold text-[#1A1A1A] mb-1">WhatsApp Support Number</label>
+              <label className="block text-xs font-bold text-[#0F172A] uppercase tracking-wider mb-1">
+                GSTIN (15 Characters)
+              </label>
               <input
                 type="text"
-                value={seller?.whatsappNumber || ''}
-                onChange={(e) => updateSellerField('whatsappNumber', e.target.value)}
-                className="w-full px-3.5 py-2.5 text-xs rounded-xl border border-[#D6D6D6] outline-none focus:border-black"
-              />
-            </div>
-
-            <div>
-              <label className="block text-xs font-semibold text-[#1A1A1A] mb-1">Registered GSTIN</label>
-              <input
-                type="text"
+                maxLength={15}
+                placeholder="22AAAAA0000A1Z5"
                 value={seller?.gstNumber || ''}
                 onChange={(e) => updateSellerField('gstNumber', e.target.value.toUpperCase())}
-                placeholder="15-character GST number"
-                className="w-full px-3.5 py-2.5 text-xs rounded-xl border border-[#D6D6D6] outline-none focus:border-black uppercase font-mono"
+                className={`w-full px-3.5 py-2.5 text-xs rounded-xl border font-mono uppercase outline-none ${
+                  validationErrors.gstNumber
+                    ? 'border-red-400 bg-red-50 text-red-700'
+                    : 'border-[#D6D6D6] focus:border-black'
+                }`}
               />
+              {validationErrors.gstNumber && (
+                <p className="text-[11px] text-red-600 mt-1">{validationErrors.gstNumber}</p>
+              )}
             </div>
 
+            {/* Primary Category */}
             <div>
-              <label className="block text-xs font-semibold text-[#1A1A1A] mb-1">Primary Product Category</label>
-              <input
-                type="text"
+              <label className="block text-xs font-bold text-[#0F172A] uppercase tracking-wider mb-1">
+                Primary Business Category *
+              </label>
+              <select
                 value={profile.category || ''}
                 onChange={(e) => updateProfileField('category', e.target.value)}
-                placeholder="e.g. Traditional Snacks, Saffron & Spices"
-                className="w-full px-3.5 py-2.5 text-xs rounded-xl border border-[#D6D6D6] outline-none focus:border-black"
+                className="w-full px-3.5 py-2.5 text-xs rounded-xl border border-[#D6D6D6] outline-none focus:border-black bg-white"
+              >
+                <option value="">Select primary category…</option>
+                <option value="Snacks">Snacks</option>
+                <option value="Sweets">Sweets</option>
+                <option value="Groceries">Groceries</option>
+                <option value="Clothing">Clothing</option>
+                <option value="Electronics">Electronics</option>
+                <option value="Vegetables">Vegetables</option>
+                <option value="Fruits">Fruits</option>
+                <option value="Other">Other</option>
+              </select>
+            </div>
+
+            {/* FSSAI 14-digit validation */}
+            <div>
+              <div className="flex items-center justify-between mb-1">
+                <label className="block text-xs font-bold text-[#0F172A] uppercase tracking-wider">
+                  FSSAI License Number (14 Digits)
+                </label>
+                {isFoodCategory(profile.category) && (
+                  <span className="text-[10px] font-bold text-red-600 bg-red-50 px-2 py-0.5 rounded-full border border-red-200">
+                    Mandatory for Food
+                  </span>
+                )}
+              </div>
+              <input
+                type="text"
+                maxLength={14}
+                placeholder="14-digit license number"
+                value={profile.fssaiNumber || ''}
+                onChange={(e) => updateProfileField('fssaiNumber', e.target.value.replace(/\D/g, ''))}
+                className={`w-full px-3.5 py-2.5 text-xs rounded-xl border font-mono outline-none ${
+                  validationErrors.fssaiNumber
+                    ? 'border-red-400 bg-red-50 text-red-700'
+                    : 'border-[#D6D6D6] focus:border-black'
+                }`}
               />
+              {validationErrors.fssaiNumber && (
+                <p className="text-[11px] text-red-600 mt-1">{validationErrors.fssaiNumber}</p>
+              )}
             </div>
           </div>
 
           <div>
-            <label className="block text-xs font-semibold text-[#1A1A1A] mb-1">Business Description & Story</label>
+            <label className="block text-xs font-bold text-[#0F172A] uppercase tracking-wider mb-1">
+              Store Description
+            </label>
             <textarea
               rows={3}
               value={profile.description || ''}
               onChange={(e) => updateProfileField('description', e.target.value)}
-              placeholder="Tell customers about your craftsmanship, authentic recipes, and quality standards."
-              className="w-full px-3.5 py-2.5 text-xs rounded-xl border border-[#D6D6D6] outline-none focus:border-black"
-            />
-          </div>
-
-          <div>
-            <label className="block text-xs font-semibold text-[#1A1A1A] mb-1">Website or Store URL (optional)</label>
-            <input
-              type="text"
-              value={profile.website || ''}
-              onChange={(e) => updateProfileField('website', e.target.value)}
-              placeholder="https://..."
-              className="w-full px-3.5 py-2.5 text-xs rounded-xl border border-[#D6D6D6] outline-none focus:border-black"
+              placeholder="Describe your authentic origin, crafting process, and quality standards."
+              className="w-full px-3.5 py-2.5 text-xs rounded-xl border border-[#D6D6D6] outline-none focus:border-black resize-none"
             />
           </div>
         </div>
       )}
 
-      {/* Tab 2: Pickup & Return Addresses */}
+      {/* Tab 2: Pickup & Return Address */}
       {activeTab === 'address' && (
-        <div className="bg-white rounded-2xl border border-[#E8E8E8] p-6 shadow-xs space-y-6">
-          {/* Pickup Address */}
+        <div className="bg-white rounded-3xl border border-[#E7E2D6] p-6 shadow-xs space-y-6">
           <div>
-            <h2 className="text-sm font-bold uppercase tracking-wider text-[#000000] mb-3">
-              Warehouse / Pickup Address (Where courier collects orders)
+            <h2 className="text-sm font-bold uppercase tracking-wider text-[#0F172A] mb-3">
+              Warehouse Pickup Address (Courier Collection)
             </h2>
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
-              <div className="sm:col-span-2 md:col-span-3">
-                <label className="block text-xs font-semibold text-[#1A1A1A] mb-1">Street / Building Address</label>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div className="sm:col-span-3">
+                <label className="block text-xs font-bold text-[#0F172A] uppercase tracking-wider mb-1">
+                  Street / Building Address *
+                </label>
                 <input
                   type="text"
                   value={profile.pickupAddress?.street || ''}
                   onChange={(e) => updatePickup('street', e.target.value)}
-                  placeholder="Door No, Street Name, Industrial Area"
-                  className="w-full px-3.5 py-2 text-xs rounded-xl border border-[#D6D6D6] outline-none focus:border-black"
+                  placeholder="Door No, Street Name, Industrial Estate"
+                  className="w-full px-3.5 py-2.5 text-xs rounded-xl border border-[#D6D6D6] outline-none focus:border-black"
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-[#1A1A1A] mb-1">City / District</label>
+                <label className="block text-xs font-bold text-[#0F172A] uppercase tracking-wider mb-1">
+                  City *
+                </label>
                 <input
                   type="text"
                   value={profile.pickupAddress?.city || ''}
                   onChange={(e) => updatePickup('city', e.target.value)}
-                  placeholder="e.g. Chennai"
-                  className="w-full px-3.5 py-2 text-xs rounded-xl border border-[#D6D6D6] outline-none focus:border-black"
+                  className="w-full px-3.5 py-2.5 text-xs rounded-xl border border-[#D6D6D6] outline-none focus:border-black"
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-[#1A1A1A] mb-1">State</label>
+                <label className="block text-xs font-bold text-[#0F172A] uppercase tracking-wider mb-1">
+                  State *
+                </label>
                 <input
                   type="text"
                   value={profile.pickupAddress?.state || ''}
                   onChange={(e) => updatePickup('state', e.target.value)}
-                  placeholder="e.g. Tamil Nadu"
-                  className="w-full px-3.5 py-2 text-xs rounded-xl border border-[#D6D6D6] outline-none focus:border-black"
+                  className="w-full px-3.5 py-2.5 text-xs rounded-xl border border-[#D6D6D6] outline-none focus:border-black"
                 />
               </div>
 
+              {/* Pincode 6-digit non-zero validation */}
               <div>
-                <label className="block text-xs font-semibold text-[#1A1A1A] mb-1">Pincode</label>
+                <label className="block text-xs font-bold text-[#0F172A] uppercase tracking-wider mb-1">
+                  Pincode (6 Digits) *
+                </label>
                 <input
                   type="text"
                   maxLength={6}
+                  placeholder="600001"
                   value={profile.pickupAddress?.pincode || ''}
-                  onChange={(e) => updatePickup('pincode', e.target.value)}
-                  placeholder="6-digit pincode"
-                  className="w-full px-3.5 py-2 text-xs rounded-xl border border-[#D6D6D6] outline-none focus:border-black font-mono"
+                  onChange={(e) => updatePickup('pincode', e.target.value.replace(/\D/g, ''))}
+                  className={`w-full px-3.5 py-2.5 text-xs rounded-xl border font-mono outline-none ${
+                    validationErrors.pickupPincode
+                      ? 'border-red-400 bg-red-50 text-red-700'
+                      : 'border-[#D6D6D6] focus:border-black'
+                  }`}
                 />
+                {validationErrors.pickupPincode && (
+                  <p className="text-[11px] text-red-600 mt-1">{validationErrors.pickupPincode}</p>
+                )}
               </div>
             </div>
-          </div>
-
-          <div className="border-t border-[#E8E8E8] pt-4">
-            <div className="flex items-center justify-between mb-3">
-              <h2 className="text-sm font-bold uppercase tracking-wider text-[#000000]">
-                Customer Return Address
-              </h2>
-              <label className="flex items-center gap-1.5 text-xs text-[#6B6B6B] cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={Boolean(profile.returnAddress?.sameAsPickup)}
-                  onChange={(e) => updateReturn('sameAsPickup', e.target.checked)}
-                  className="rounded"
-                />
-                <span>Same as Pickup Address</span>
-              </label>
-            </div>
-
-            {!profile.returnAddress?.sameAsPickup && (
-              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
-                <div className="sm:col-span-2 md:col-span-3">
-                  <label className="block text-xs font-semibold text-[#1A1A1A] mb-1">Return Street Address</label>
-                  <input
-                    type="text"
-                    value={profile.returnAddress?.street || ''}
-                    onChange={(e) => updateReturn('street', e.target.value)}
-                    className="w-full px-3.5 py-2 text-xs rounded-xl border border-[#D6D6D6] outline-none focus:border-black"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-[#1A1A1A] mb-1">City</label>
-                  <input
-                    type="text"
-                    value={profile.returnAddress?.city || ''}
-                    onChange={(e) => updateReturn('city', e.target.value)}
-                    className="w-full px-3.5 py-2 text-xs rounded-xl border border-[#D6D6D6] outline-none focus:border-black"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-[#1A1A1A] mb-1">State</label>
-                  <input
-                    type="text"
-                    value={profile.returnAddress?.state || ''}
-                    onChange={(e) => updateReturn('state', e.target.value)}
-                    className="w-full px-3.5 py-2 text-xs rounded-xl border border-[#D6D6D6] outline-none focus:border-black"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-[#1A1A1A] mb-1">Pincode</label>
-                  <input
-                    type="text"
-                    maxLength={6}
-                    value={profile.returnAddress?.pincode || ''}
-                    onChange={(e) => updateReturn('pincode', e.target.value)}
-                    className="w-full px-3.5 py-2 text-xs rounded-xl border border-[#D6D6D6] outline-none focus:border-black font-mono"
-                  />
-                </div>
-              </div>
-            )}
           </div>
         </div>
       )}
 
-      {/* Tab 3: Bank Account Details */}
+      {/* Tab 3: Bank Account & IFSC */}
       {activeTab === 'bank' && (
-        <div className="bg-white rounded-2xl border border-[#E8E8E8] p-6 shadow-xs space-y-4">
-          <div className="flex items-center gap-2 mb-1">
-            <h2 className="text-sm font-bold uppercase tracking-wider text-[#000000]">
-              Bank Account for Payouts
-            </h2>
-            <span className="text-[11px] text-[#6B6B6B]">(Payments sent directly to this account)</span>
-          </div>
+        <div className="bg-white rounded-3xl border border-[#E7E2D6] p-6 shadow-xs space-y-4">
+          <h2 className="text-sm font-bold uppercase tracking-wider text-[#0F172A]">
+            Bank Account for Direct Payouts
+          </h2>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
-              <label className="block text-xs font-semibold text-[#1A1A1A] mb-1">Account Holder Name *</label>
+              <label className="block text-xs font-bold text-[#0F172A] uppercase tracking-wider mb-1">
+                Account Holder Name *
+              </label>
               <input
                 type="text"
                 value={profile.bankDetails?.accountHolderName || ''}
@@ -545,141 +592,181 @@ export default function SellerProfilePage() {
             </div>
 
             <div>
-              <label className="block text-xs font-semibold text-[#1A1A1A] mb-1">Bank Name *</label>
+              <label className="block text-xs font-bold text-[#0F172A] uppercase tracking-wider mb-1">
+                Bank Name *
+              </label>
               <input
                 type="text"
                 value={profile.bankDetails?.bankName || ''}
                 onChange={(e) => updateBank('bankName', e.target.value)}
-                placeholder="e.g. HDFC Bank, SBI, ICICI"
+                placeholder="e.g. HDFC Bank, State Bank of India"
                 className="w-full px-3.5 py-2.5 text-xs rounded-xl border border-[#D6D6D6] outline-none focus:border-black"
               />
             </div>
 
+            {/* Bank Account Number 9 to 18 digits */}
             <div>
-              <label className="block text-xs font-semibold text-[#1A1A1A] mb-1">Bank Account Number *</label>
+              <label className="block text-xs font-bold text-[#0F172A] uppercase tracking-wider mb-1">
+                Bank Account Number (9 - 18 Digits) *
+              </label>
               <input
                 type="text"
+                maxLength={18}
                 value={profile.bankDetails?.accountNumber || ''}
                 onChange={(e) => updateBank('accountNumber', e.target.value.replace(/\D/g, ''))}
-                placeholder="Account number"
-                className="w-full px-3.5 py-2.5 text-xs rounded-xl border border-[#D6D6D6] outline-none focus:border-black font-mono"
+                placeholder="Enter account number"
+                className={`w-full px-3.5 py-2.5 text-xs rounded-xl border font-mono outline-none ${
+                  validationErrors.accountNumber
+                    ? 'border-red-400 bg-red-50 text-red-700'
+                    : 'border-[#D6D6D6] focus:border-black'
+                }`}
               />
             </div>
 
+            {/* Confirm Bank Account Number */}
             <div>
-              <label className="block text-xs font-semibold text-[#1A1A1A] mb-1">IFSC Code *</label>
+              <label className="block text-xs font-bold text-[#0F172A] uppercase tracking-wider mb-1">
+                Confirm Bank Account Number *
+              </label>
+              <input
+                type="text"
+                maxLength={18}
+                value={confirmAccountNumber}
+                onChange={(e) => setConfirmAccountNumber(e.target.value.replace(/\D/g, ''))}
+                placeholder="Re-enter account number to confirm"
+                className={`w-full px-3.5 py-2.5 text-xs rounded-xl border font-mono outline-none ${
+                  validationErrors.accountNumber
+                    ? 'border-red-400 bg-red-50 text-red-700'
+                    : 'border-[#D6D6D6] focus:border-black'
+                }`}
+              />
+              {validationErrors.accountNumber && (
+                <p className="text-[11px] text-red-600 mt-1">{validationErrors.accountNumber}</p>
+              )}
+            </div>
+
+            {/* IFSC Code */}
+            <div>
+              <label className="block text-xs font-bold text-[#0F172A] uppercase tracking-wider mb-1">
+                Bank IFSC Code (11 Characters) *
+              </label>
               <input
                 type="text"
                 maxLength={11}
                 value={profile.bankDetails?.ifscCode || ''}
                 onChange={(e) => updateBank('ifscCode', e.target.value.toUpperCase())}
                 placeholder="e.g. HDFC0001234"
-                className="w-full px-3.5 py-2.5 text-xs rounded-xl border border-[#D6D6D6] outline-none focus:border-black font-mono uppercase"
+                className={`w-full px-3.5 py-2.5 text-xs rounded-xl border font-mono uppercase outline-none ${
+                  validationErrors.ifscCode
+                    ? 'border-red-400 bg-red-50 text-red-700'
+                    : 'border-[#D6D6D6] focus:border-black'
+                }`}
               />
+              {validationErrors.ifscCode ? (
+                <p className="text-[11px] text-red-600 mt-1">{validationErrors.ifscCode}</p>
+              ) : (
+                <p className="text-[10px] text-[#64748B] mt-1">4 letters, 5th character must be 0, followed by 6 alphanumeric characters.</p>
+              )}
             </div>
 
             <div>
-              <label className="block text-xs font-semibold text-[#1A1A1A] mb-1">Account Type</label>
+              <label className="block text-xs font-bold text-[#0F172A] uppercase tracking-wider mb-1">
+                Account Type
+              </label>
               <select
                 value={profile.bankDetails?.accountType || 'Current'}
                 onChange={(e) => updateBank('accountType', e.target.value)}
                 className="w-full px-3.5 py-2.5 text-xs rounded-xl border border-[#D6D6D6] outline-none focus:border-black bg-white"
               >
-                <option value="Current">Current Account (Recommended for Business)</option>
-                <option value="Savings">Savings Account (Proprietorship)</option>
+                <option value="Current">Current Account</option>
+                <option value="Savings">Savings Account</option>
               </select>
             </div>
           </div>
         </div>
       )}
 
-      {/* Tab 4: Documents & Verification */}
+      {/* Tab 4: Document Uploads (PAN, GST, Cancelled Cheque, FSSAI, Address Proof) */}
       {activeTab === 'documents' && (
-        <div className="bg-white rounded-2xl border border-[#E8E8E8] p-6 shadow-xs space-y-6">
+        <div className="bg-white rounded-3xl border border-[#E7E2D6] p-6 shadow-xs space-y-6">
           <div>
-            <h2 className="text-sm font-bold uppercase tracking-wider text-[#000000]">
-              Business Documents & Verification
+            <h2 className="text-sm font-bold uppercase tracking-wider text-[#0F172A]">
+              Compliance & Verification Documents
             </h2>
-            <p className="text-xs text-[#6B6B6B] mt-0.5">
-              Upload scanned copies or clear photos of your business certificates (PDF, JPG, PNG under 10 MB).
+            <p className="text-xs text-[#64748B] mt-0.5">
+              Upload clear scanned copies (PDF, JPG, PNG under 5 MB). URLs are stored securely.
             </p>
           </div>
 
-          {/* Upload Grid */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {DOC_TYPES.map((d) => {
               const existingDoc = documents.find((doc) => doc.documentType === d.key);
+              const isUploadingThis = uploadingDoc === d.key;
+
               return (
                 <div
                   key={d.key}
-                  className="p-4 rounded-xl border border-[#E8E8E8] bg-[#FAFAFA] flex flex-col justify-between"
+                  className="p-5 rounded-2xl border border-[#E7E2D6] bg-[#FCFBF8] flex flex-col justify-between space-y-3"
                 >
                   <div>
                     <div className="flex items-center justify-between gap-2">
-                      <span className="text-xs font-bold text-[#000000]">{d.label}</span>
+                      <span className="text-xs font-bold text-[#0F172A]">{d.label}</span>
                       {existingDoc ? (
-                        existingDoc.verificationStatus === 'verified' ? (
-                          <span className="text-[10px] font-bold text-[#1B8A3E] bg-[#E3F3E8] px-2 py-0.5 rounded-full uppercase">
-                            Verified
-                          </span>
-                        ) : existingDoc.verificationStatus === 'rejected' ? (
-                          <span className="text-[10px] font-bold text-[#B3261E] bg-[#FCE8E6] px-2 py-0.5 rounded-full uppercase">
-                            Rejected
-                          </span>
-                        ) : (
-                          <span className="text-[10px] font-bold text-[#8A6D1B] bg-[#FBF3D9] px-2 py-0.5 rounded-full uppercase">
-                            Pending Review
-                          </span>
-                        )
+                        <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200 uppercase">
+                          Uploaded
+                        </span>
                       ) : (
-                        <span className="text-[10px] text-[#9A9A9A] bg-white border border-[#E8E8E8] px-2 py-0.5 rounded-full uppercase">
-                          Not Uploaded
+                        <span className="text-[10px] text-[#64748B] bg-white border border-[#E7E2D6] px-2 py-0.5 rounded-full uppercase">
+                          {d.required ? 'Required' : 'Optional'}
                         </span>
                       )}
                     </div>
-                    <p className="text-[11px] text-[#6B6B6B] mt-1">{d.desc}</p>
-
-                    {existingDoc?.remarks && (
-                      <div className="mt-2 text-[11px] p-2 rounded bg-amber-50 text-amber-900 border border-amber-200">
-                        Admin Note: {existingDoc.remarks}
-                      </div>
-                    )}
+                    <p className="text-[11px] text-[#64748B] mt-1">{d.desc}</p>
                   </div>
 
-                  <div className="mt-4 pt-3 border-t border-[#E8E8E8] flex items-center justify-between gap-2">
+                  <div className="pt-2 border-t border-[#F0EFE9] flex items-center justify-between gap-2">
                     {existingDoc ? (
                       <div className="flex items-center gap-2">
                         <a
                           href={existingDoc.fileUrl}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="inline-flex items-center gap-1 text-[11px] font-semibold text-[#000000] hover:underline"
+                          className="inline-flex items-center gap-1 text-xs font-bold text-[#C9A227] hover:underline"
                         >
-                          <ExternalLink size={12} /> View File
+                          <ExternalLink size={13} />
+                          <span>View Document</span>
                         </a>
                         <button
                           type="button"
                           onClick={() => handleDeleteDoc(existingDoc._id)}
-                          className="text-[11px] text-[#B3261E] hover:underline flex items-center gap-1 ml-2"
+                          className="p-1 text-neutral-400 hover:text-red-600 rounded"
+                          title="Remove document"
                         >
-                          <Trash2 size={12} /> Replace
+                          <Trash2 size={14} />
                         </button>
                       </div>
                     ) : (
-                      <span className="text-[11px] text-[#9A9A9A]">No file chosen</span>
+                      <label className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-white text-[#0F172A] border border-[#D6D6D6] hover:border-black cursor-pointer shadow-2xs">
+                        {isUploadingThis ? (
+                          <>
+                            <Loader2 size={13} className="animate-spin text-[#C9A227]" />
+                            <span>Uploading…</span>
+                          </>
+                        ) : (
+                          <>
+                            <Upload size={13} />
+                            <span>Upload File</span>
+                          </>
+                        )}
+                        <input
+                          type="file"
+                          accept=".pdf,image/png,image/jpeg"
+                          disabled={Boolean(uploadingDoc)}
+                          onChange={(e) => handleDocUpload(e, d.key)}
+                          className="hidden"
+                        />
+                      </label>
                     )}
-
-                    <label className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-black text-white hover:bg-neutral-800 transition-all cursor-pointer">
-                      <Upload size={12} />
-                      <span>{existingDoc ? 'Re-upload' : 'Upload'}</span>
-                      <input
-                        type="file"
-                        accept=".pdf,.jpg,.jpeg,.png,.webp"
-                        disabled={uploading}
-                        onChange={(e) => handleDocUpload(e, d.key)}
-                        className="hidden"
-                      />
-                    </label>
                   </div>
                 </div>
               );
@@ -688,49 +775,75 @@ export default function SellerProfilePage() {
         </div>
       )}
 
-      {/* Bottom Sticky Action Bar */}
-      <div className="bg-white rounded-2xl border border-[#E8E8E8] p-4 shadow-sm flex flex-wrap items-center justify-between gap-4">
-        <div className="text-xs text-[#6B6B6B]">
-          {verStatus === 'verified' ? (
-            <span className="text-[#1B8A3E] font-semibold flex items-center gap-1">
-              <CheckCircle2 size={14} /> Your seller profile and documents are officially verified.
-            </span>
-          ) : verStatus === 'in_review' ? (
-            <span className="text-[#8A6D1B] font-semibold flex items-center gap-1">
-              <Clock size={14} /> Profile submitted and waiting for administrator review.
-            </span>
-          ) : (
-            <span>Save your changes and submit for verification once complete.</span>
-          )}
-        </div>
+      {/* Tab 5: Delivery Charges (Feature 11) */}
+      {activeTab === 'delivery' && (
+        <div className="bg-white rounded-3xl border border-[#E7E2D6] p-6 shadow-xs space-y-4">
+          <div>
+            <h2 className="text-sm font-bold uppercase tracking-wider text-[#0F172A]">
+              Delivery & Order Fulfillment Settings (Feature 11)
+            </h2>
+            <p className="text-xs text-[#64748B] mt-0.5">
+              Configure your store&apos;s shipping charges, free shipping threshold, and minimum order requirement.
+            </p>
+          </div>
 
-        <div className="flex items-center gap-2.5">
-          <button
-            type="button"
-            onClick={handleSave}
-            disabled={saving}
-            className="px-5 py-2.5 rounded-xl text-xs font-bold border border-black bg-white text-black hover:bg-neutral-50 disabled:opacity-50 transition-all flex items-center gap-1.5"
-          >
-            {saving ? <Loader2 size={14} className="animate-spin text-[#C9A227]" /> : <Save size={14} />}
-            <span>Save Draft</span>
-          </button>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div>
+              <label className="block text-xs font-bold text-[#0F172A] uppercase tracking-wider mb-1">
+                Standard Delivery Charge (₹)
+              </label>
+              <input
+                type="number"
+                min="0"
+                value={profile.deliveryCharge ?? 49}
+                onChange={(e) => updateProfileField('deliveryCharge', e.target.value)}
+                className="w-full px-3.5 py-2.5 text-xs rounded-xl border border-[#D6D6D6] outline-none focus:border-black font-bold"
+              />
+              <p className="text-[10px] text-[#64748B] mt-1">₹0 = Free delivery on all orders.</p>
+            </div>
 
-          {verStatus !== 'verified' && verStatus !== 'in_review' && (
-            <button
-              type="button"
-              onClick={handleSubmitVerification}
-              disabled={submittingVerification}
-              className="px-6 py-2.5 rounded-xl text-xs font-bold bg-black text-white hover:bg-neutral-800 disabled:opacity-50 transition-all flex items-center gap-1.5 shadow-sm"
-            >
-              {submittingVerification ? (
-                <Loader2 size={14} className="animate-spin text-[#C9A227]" />
-              ) : (
-                <Send size={14} className="text-[#C9A227]" />
-              )}
-              <span>Submit for Verification</span>
-            </button>
-          )}
+            <div>
+              <label className="block text-xs font-bold text-[#0F172A] uppercase tracking-wider mb-1">
+                Free Delivery Above (₹)
+              </label>
+              <input
+                type="number"
+                min="0"
+                value={profile.freeDeliveryThreshold ?? 499}
+                onChange={(e) => updateProfileField('freeDeliveryThreshold', e.target.value)}
+                className="w-full px-3.5 py-2.5 text-xs rounded-xl border border-[#D6D6D6] outline-none focus:border-black font-bold"
+              />
+              <p className="text-[10px] text-[#64748B] mt-1">Orders above this threshold get free shipping.</p>
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-[#0F172A] uppercase tracking-wider mb-1">
+                Minimum Order Value (₹)
+              </label>
+              <input
+                type="number"
+                min="0"
+                value={profile.minOrderValue ?? 0}
+                onChange={(e) => updateProfileField('minOrderValue', e.target.value)}
+                className="w-full px-3.5 py-2.5 text-xs rounded-xl border border-[#D6D6D6] outline-none focus:border-black font-bold"
+              />
+              <p className="text-[10px] text-[#64748B] mt-1">Cart value required to place an order.</p>
+            </div>
+          </div>
         </div>
+      )}
+
+      {/* Save Button Bar */}
+      <div className="flex items-center justify-end gap-3 pt-4 border-t border-[#E7E2D6]">
+        <button
+          type="button"
+          onClick={handleSave}
+          disabled={saving || Object.keys(validationErrors).length > 0}
+          className="inline-flex items-center gap-2 px-6 py-3 rounded-xl text-xs font-bold bg-[#0F172A] text-white hover:bg-neutral-800 shadow-sm transition-all disabled:opacity-50"
+        >
+          {saving ? <Loader2 size={15} className="animate-spin text-[#C9A227]" /> : <Save size={15} />}
+          <span>{saving ? 'Saving Profile…' : 'Save Profile Changes'}</span>
+        </button>
       </div>
     </div>
   );

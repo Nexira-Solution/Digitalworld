@@ -8,11 +8,16 @@ import { requireAdmin } from '@/lib/apiAuth';
 import { PRODUCT_TYPE_KEYS } from '@/lib/productTypes';
 
 // GET /api/categories
+//   ?all=true  -> return all (including inactive) for admin
 //   categories — flat sorted list (now includes `productType` on each)
 //   topLevel   — parent-less categories each with a `subcategories` array
-export async function GET() {
+export async function GET(req) {
   await dbConnect();
-  const categories = await Category.find({ isActive: true }).sort({ sortOrder: 1, name: 1 });
+  const { searchParams } = new URL(req.url);
+  const includeAll = searchParams.get('all') === 'true';
+  const filter = includeAll ? {} : { isActive: true };
+
+  const categories = await Category.find(filter).sort({ sortOrder: 1, name: 1 });
 
   const byParent = {};
   for (const c of categories) {
@@ -47,15 +52,15 @@ export const POST = requireAdmin(async (req) => {
   }
 
   // A subcategory always uses its parent's product type; a main category uses
-  // whatever the admin picked (default: food/apparel).
-  let productType = body.productType || 'food';
+  // whatever the admin picked.
+  let productType = body.productType || 'general';
   if (body.parent) {
     const parent = await Category.findById(body.parent).select('productType');
     if (!parent) return NextResponse.json({ error: 'Parent category not found' }, { status: 400 });
-    productType = parent.productType || 'food';
+    productType = parent.productType || 'general';
   }
   if (!PRODUCT_TYPE_KEYS.includes(productType)) {
-    return NextResponse.json({ error: 'Invalid product type' }, { status: 400 });
+    productType = 'general';
   }
 
   const maxOrder = await Category.findOne({ parent: body.parent || null }).sort({ sortOrder: -1 }).select('sortOrder');
@@ -67,7 +72,8 @@ export const POST = requireAdmin(async (req) => {
     parent: body.parent || null,
     productType,
     sortOrder,
-    isActive: true,
+    isActive: body.isActive !== undefined ? Boolean(body.isActive) : true,
+    customAttributes: Array.isArray(body.customAttributes) ? body.customAttributes : [],
   });
   return NextResponse.json({ category }, { status: 201 });
 });

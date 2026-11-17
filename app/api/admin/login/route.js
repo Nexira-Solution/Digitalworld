@@ -27,8 +27,11 @@ export async function POST(req) {
     if (admin.role === 'seller' && admin.status === 'rejected') {
       return NextResponse.json(
         {
-          error: 'Your seller application was rejected.',
-          reason: admin.rejectionReason || undefined,
+          error: 'Your seller account has not been approved.',
+          status: 'rejected',
+          reason: admin.rejectionReason || 'Application criteria were not met. Please review your details and re-apply.',
+          contactEmail: 'support@digitalworld.com',
+          contactPhone: '+91 98765 43210',
         },
         { status: 403 }
       );

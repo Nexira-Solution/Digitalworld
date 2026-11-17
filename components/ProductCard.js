@@ -47,15 +47,21 @@ export function ProductImage({
         />
       </Link>
 
-      {/* Top Left: Discount Pill Badge */}
-      {discountPct > 0 && !outOfStock && (
+      {/* Top Left: Out of Stock Badge or Discount Pill Badge */}
+      {outOfStock ? (
+        <div className="absolute top-2 left-2 z-10 pointer-events-none">
+          <span className="inline-flex items-center gap-1 bg-[#B3261E] text-white font-bold text-[10px] sm:text-[10.5px] px-2.5 py-0.5 rounded-full shadow-sm tracking-tight uppercase">
+            Out of Stock
+          </span>
+        </div>
+      ) : discountPct > 0 ? (
         <div className="absolute top-2 left-2 z-10 pointer-events-none">
           <span className="inline-flex items-center gap-0.5 bg-[#C9A227] text-[#000000] font-bold text-[10px] sm:text-[10.5px] px-2 py-0.5 rounded-full shadow-xs tracking-tight">
             <Flame size={10} className="fill-[#000000] text-[#000000]" />
             <span>{discountPct}% OFF</span>
           </span>
         </div>
-      )}
+      ) : null}
 
       {/* Top Right: Favorite / Wishlist Button */}
       <button
@@ -120,7 +126,13 @@ export function ProductStock({ stockStatus }) {
   }
 
   return (
-    <span className="inline-flex items-center text-[9.5px] font-semibold text-[#1A1A1A] bg-[#F6EFD9] px-1.5 py-0.2 rounded-full shrink-0 whitespace-nowrap">
+    <span
+      className={`inline-flex items-center text-[9.5px] font-semibold px-2 py-0.5 rounded-full shrink-0 whitespace-nowrap ${
+        stockStatus.isOut
+          ? 'text-[#B3261E] bg-[#FCE8E6] border border-[#B3261E]/30 font-bold'
+          : 'text-[#1A1A1A] bg-[#F6EFD9]'
+      }`}
+    >
       {stockStatus.label}
     </span>
   );
@@ -239,7 +251,10 @@ export default function ProductCard({ product, index = 0 }) {
 
   const discountPct = calculateDiscount(sellingPrice, originalPrice);
   const savings = calculateSavings(sellingPrice, originalPrice);
-  const stockStatus = getProductStockStatus(currentStock, 5);
+  const allPacksOut = packs.length > 0 && packs.every((p) => Number(p.stock) <= 0);
+  const stockStatus = allPacksOut
+    ? { status: 'out', label: 'Out of Stock', isLow: false, isOut: true, shouldShow: true }
+    : getProductStockStatus(currentStock, 5);
   const outOfStock = stockStatus.isOut;
 
   const wishlistId = product?._id ?? product?.id ?? display.id;

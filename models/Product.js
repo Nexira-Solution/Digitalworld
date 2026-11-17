@@ -1,5 +1,24 @@
 import mongoose from 'mongoose';
 
+const VariantSizeSchema = new mongoose.Schema(
+  {
+    size: { type: String, required: true },
+    stock: { type: Number, default: 0 },
+    sku: { type: String, default: '' },
+    barcode: { type: String, default: '' },
+    price: { type: Number },
+    compareAtPrice: { type: Number },
+    discountPercentage: { type: Number, default: 0 },
+    // Category-specific dimensions
+    ram: { type: String, default: '' },
+    storage: { type: String, default: '' },
+    warranty: { type: String, default: '' },
+    ukSize: { type: String, default: '' },
+    euSize: { type: String, default: '' },
+  },
+  { _id: true }
+);
+
 const VariantSchema = new mongoose.Schema(
   {
     color: { type: String, default: '' },
@@ -8,18 +27,21 @@ const VariantSchema = new mongoose.Schema(
     price: { type: Number, required: true },
     compareAtPrice: { type: Number, default: 0 },
     discountPercentage: { type: Number, default: 0 },
+    // Category-specific variant attributes
+    model: { type: String, default: '' },
+    ram: { type: String, default: '' },
+    storage: { type: String, default: '' },
+    warranty: { type: String, default: '' },
+    style: { type: String, default: '' },
+    fabric: { type: String, default: '' },
+    material: { type: String, default: '' },
+    ukSize: { type: String, default: '' },
+    euSize: { type: String, default: '' },
+    sku: { type: String, default: '' },
+    barcode: { type: String, default: '' },
+    stock: { type: Number, default: 0 },
     // Holds sizes for apparel, pack sizes for food, configurations for electronics.
-    // The label shown in the UI comes from lib/productTypes.js.
-    sizes: [
-      {
-        size: { type: String, required: true },
-        stock: { type: Number, default: 0 },
-        sku: { type: String },
-        price: { type: Number },
-        compareAtPrice: { type: Number },
-        discountPercentage: { type: Number, default: 0 },
-      },
-    ],
+    sizes: [VariantSizeSchema],
   },
   { _id: true }
 );
@@ -37,17 +59,26 @@ const AddonOptionSchema = new mongoose.Schema(
 
 const ProductSchema = new mongoose.Schema(
   {
+    // Requirement 05: Category-based unique Product ID (e.g. ELE-00001, SNK-00001)
+    productId: { type: String, unique: true, sparse: true, trim: true, index: true },
     name: { type: String, required: true },
     slug: { type: String, required: true, unique: true },
     sku: { type: String, required: true, unique: true, trim: true, uppercase: true },
     description: { type: String, default: '' },
     category: { type: mongoose.Schema.Types.ObjectId, ref: 'Category', required: true },
+    subcategory: { type: mongoose.Schema.Types.ObjectId, ref: 'Category', default: null },
+    barcode: { type: String, default: '', trim: true },
 
-    // NEW — set server-side from the category. Existing docs read as 'apparel'.
-    productType: { type: String, enum: ['apparel', 'electronics', 'food', 'general'], default: 'apparel', index: true },
-    // NEW — type-specific fields (brand, warrantyMonths, foodType, fssaiLicense, ...)
+    // Category product type
+    productType: {
+      type: String,
+      enum: ['apparel', 'electronics', 'food', 'general', 'clothing', 'snacks', 'sweets', 'groceries', 'vegetables', 'fruits', 'footwear', 'other'],
+      default: 'general',
+      index: true,
+    },
+    // Type-specific fields (brand, warrantyMonths, fssaiLicense, etc.)
     attributes: { type: mongoose.Schema.Types.Mixed, default: {} },
-    // NEW — free-form spec table, e.g. [{ key: 'Battery', value: '5000 mAh' }]
+    // Spec table, e.g. [{ key: 'Battery', value: '5000 mAh' }]
     specs: [{ _id: false, key: String, value: String }],
 
     // Which seller (Admin doc, role: 'seller') owns this product; null = superadmin.
@@ -79,6 +110,8 @@ const ProductSchema = new mongoose.Schema(
     isReadyToShip: { type: Boolean, default: false },
     basePrice: { type: Number, required: true },
     discountPercentage: { type: Number, default: 0 },
+    // Calculated total stock across all variants
+    totalStock: { type: Number, default: 0 },
     rating: { type: Number, default: 0 },
     reviewCount: { type: Number, default: 0 },
     isBestSeller: { type: Boolean, default: false },
@@ -93,11 +126,22 @@ const ProductSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
+// High-performance query indexes (Requirement 11)
 ProductSchema.index({ name: 'text', description: 'text', tags: 'text' });
 ProductSchema.index({ seller: 1 });
 ProductSchema.index({ slug: 1 }, { unique: true });
 ProductSchema.index({ category: 1 });
+ProductSchema.index({ subcategory: 1 });
 ProductSchema.index({ isBestSeller: 1 });
 ProductSchema.index({ isActive: 1 });
+ProductSchema.index({ isActive: 1, category: 1, createdAt: -1 });
+ProductSchema.index({ isActive: 1, basePrice: 1 });
+ProductSchema.index({ isActive: 1, rating: -1 });
+ProductSchema.index({ isActive: 1, soldCount: -1 });
+ProductSchema.index({ productId: 1 }, { unique: true, sparse: true });
+
+if (process.env.NODE_ENV !== 'production' && mongoose.models.Product) {
+  delete mongoose.models.Product;
+}
 
 export default mongoose.models.Product || mongoose.model('Product', ProductSchema);

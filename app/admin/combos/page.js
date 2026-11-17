@@ -1,8 +1,9 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
+import Link from 'next/link';
 import toast from 'react-hot-toast';
-import { Plus, Trash2, X, Pencil, Eye, EyeOff } from 'lucide-react';
+import { Plus, Trash2, X, Pencil, Eye, EyeOff, Layers, ExternalLink } from 'lucide-react';
 import ComboForm from '@/components/combo/ComboForm';
 
 function stockLabel(c) {
@@ -65,12 +66,25 @@ export default function AdminCombosPage() {
   }
 
   return (
-    <div>
-      <div className="flex items-center justify-between mb-5">
-        <h1 className="font-display text-2xl font-bold text-brand-magenta">Combo Offers</h1>
-        <button onClick={openCreate} className="btn-primary flex items-center gap-1 text-sm">
-          <Plus size={16} /> Add Combo
-        </button>
+    <div className="space-y-6">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-[#E7E2D6]">
+        <div>
+          <h1 className="text-xl font-bold uppercase tracking-wider text-[#0F172A] flex items-center gap-2">
+            <Layers size={20} className="text-[#C9A227]" />
+            <span>Manage Combo Offers</span>
+          </h1>
+          <p className="text-xs text-[#64748B] mt-1">
+            Publish, edit, and organize marketplace bundles and multipacks across all categories.
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          <Link
+            href="/admin/combos/new"
+            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold bg-[#0F172A] text-white hover:bg-[#1E293B] shadow-2xs transition-all"
+          >
+            <Plus size={15} /> Add Combo
+          </Link>
+        </div>
       </div>
 
       {showForm && (
@@ -118,12 +132,16 @@ export default function AdminCombosPage() {
                   {stock && (
                     <p className={`text-xs mt-0.5 ${stock.bad ? 'text-red-600' : 'text-neutral-500'}`}>{stock.text}</p>
                   )}
-                  <div className="flex items-center gap-3 mt-2">
-                    <button onClick={() => openEdit(c)} className="text-brand-ink/60 hover:text-brand-magenta" title="Edit"><Pencil size={16} /></button>
-                    <button onClick={() => toggleActive(c)} className="text-brand-ink/60 hover:text-brand-magenta" title={c.isActive ? 'Hide' : 'Show'}>
-                      {c.isActive ? <EyeOff size={16} /> : <Eye size={16} />}
+                  <div className="flex items-center gap-3 mt-3 pt-2 border-t border-[#F0EFE9]">
+                    <Link href={`/admin/combos/${c._id}/edit`} className="text-[#64748B] hover:text-[#0F172A]" title="Edit Details">
+                      <Pencil size={15} />
+                    </Link>
+                    <button onClick={() => toggleActive(c)} className="text-[#64748B] hover:text-[#0F172A]" title={c.isActive ? 'Hide' : 'Show'}>
+                      {c.isActive ? <EyeOff size={15} /> : <Eye size={15} />}
                     </button>
-                    <button onClick={() => remove(c._id)} className="text-brand-magenta" title="Delete"><Trash2 size={16} /></button>
+                    <button onClick={() => remove(c._id)} className="text-red-600 hover:text-red-700 ml-auto" title="Delete">
+                      <Trash2 size={15} />
+                    </button>
                   </div>
                 </div>
               </div>

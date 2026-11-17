@@ -9,6 +9,7 @@ import slugify from 'slugify';
 import { requireApprovedSeller } from '@/lib/apiAuth';
 import { generateSku } from '@/lib/sku';
 import { resolveProductType, sanitizeByType, PRODUCT_TYPE_KEYS } from '@/lib/productTypes';
+import { getPrefixForCategory, getNextProductId } from '@/lib/productId';
 
 async function generateUniqueSlug(baseName, preferredSlug, excludeId = null) {
   let base = slugify(preferredSlug || baseName || 'product', { lower: true, strict: true }) || 'product';
@@ -74,11 +75,48 @@ export async function GET(req) {
       query.productType = productType === 'apparel' ? { $in: ['apparel', null] } : productType;
     }
 
-    // 5. Size filter
+    // 5. Subcategory filter
+    const subcategoryParam = searchParams.get('subcategory');
+    if (subcategoryParam) {
+      if (mongoose.isValidObjectId(subcategoryParam)) {
+        query.subcategory = subcategoryParam;
+      } else {
+        const sub = await Category.findOne({ slug: subcategoryParam });
+        if (sub) query.subcategory = sub._id;
+      }
+    }
+
+    // 6. Brand filter
+    const brand = searchParams.get('brand');
+    if (brand && brand.trim()) {
+      query['attributes.brand'] = { $regex: brand.trim(), $options: 'i' };
+    }
+
+    // 7. Stock status filter (Requirement 09)
+    const stockParam = searchParams.get('stock') || searchParams.get('stockStatus');
+    if (stockParam === 'in_stock' || stockParam === 'inStock' || stockParam === 'true') {
+      query.$or = [{ totalStock: { $gt: 0 } }, { 'variants.sizes.stock': { $gt: 0 } }];
+    } else if (stockParam === 'out_of_stock' || stockParam === 'outOfStock') {
+      query.totalStock = { $lte: 0 };
+    }
+
+    // 8. Rating filter (Requirement 09)
+    const ratingParam = searchParams.get('rating') || searchParams.get('minRating');
+    if (ratingParam && Number(ratingParam) > 0) {
+      query.rating = { $gte: Number(ratingParam) };
+    }
+
+    // 9. Discount percentage filter (Requirement 09)
+    const discountParam = searchParams.get('discount') || searchParams.get('minDiscount');
+    if (discountParam && Number(discountParam) > 0) {
+      query.discountPercentage = { $gte: Number(discountParam) };
+    }
+
+    // 10. Size filter
     const size = searchParams.get('size');
     if (size) query['variants.sizes.size'] = size;
 
-    // 6. Price range filter
+    // 11. Price range filter
     const minPrice = searchParams.get('minPrice');
     const maxPrice = searchParams.get('maxPrice');
     if (minPrice || maxPrice) {
@@ -111,7 +149,9 @@ export async function GET(req) {
     const sortMap = {
       newest: { createdAt: -1 },
       priceLow: { basePrice: 1 },
+      'price-low-to-high': { basePrice: 1 },
       priceHigh: { basePrice: -1 },
+      'price-high-to-low': { basePrice: -1 },
       popular: { soldCount: -1 },
       rating: { rating: -1 },
     };
@@ -149,10 +189,45 @@ export const POST = requireApprovedSeller(async (req, ctx, admin) => {
       return NextResponse.json({ error: 'Product name and category are required' }, { status: 400 });
     }
 
-    // The product type always comes from the category, never from the client.
+    // Requirement 02: Strict category existence & active validation
     const catId = body.category?._id || body.category;
+    if (!mongoose.isValidObjectId(catId)) {
+      return NextResponse.json(
+        { error: 'Selected category does not exist. Please select an available category.' },
+        { status: 400 }
+      );
+    }
+
     const cat = await Category.findById(catId).populate('parent', 'productType');
-    if (!cat) return NextResponse.json({ error: 'Category not found' }, { status: 404 });
+    if (!cat) {
+      return NextResponse.json(
+        { error: 'Selected category does not exist. Please select an available category.' },
+        { status: 400 }
+      );
+    }
+    if (cat.isActive === false) {
+      return NextResponse.json(
+        { error: 'Selected category is inactive. Please select an active category.' },
+        { status: 400 }
+      );
+    }
+
+    // Optional subcategory existence & active validation
+    let validSubcategoryId = null;
+    if (body.subcategory) {
+      const subId = body.subcategory?._id || body.subcategory;
+      if (!mongoose.isValidObjectId(subId)) {
+        return NextResponse.json({ error: 'Selected subcategory is invalid.' }, { status: 400 });
+      }
+      const subcat = await Category.findById(subId);
+      if (!subcat) {
+        return NextResponse.json({ error: 'Selected subcategory does not exist.' }, { status: 400 });
+      }
+      if (subcat.isActive === false) {
+        return NextResponse.json({ error: 'Selected subcategory is inactive.' }, { status: 400 });
+      }
+      validSubcategoryId = subcat._id;
+    }
 
     const typeKey = resolveProductType(cat);
     const { body: clean, error } = sanitizeByType({ ...body, category: cat._id }, typeKey);
@@ -161,22 +236,37 @@ export const POST = requireApprovedSeller(async (req, ctx, admin) => {
     const sku = clean.sku || (await generateSku(cat._id));
     const slug = await generateUniqueSlug(clean.name, clean.slug);
 
-    // Calculate basePrice and discountPercentage
+    // Requirement 05: Atomic category-based Product ID generation
+    const prefix = await getPrefixForCategory(cat._id, validSubcategoryId);
+    const productId = await getNextProductId(prefix);
+
+    // Calculate basePrice, discountPercentage, and totalStock
     let basePrice = 0;
     let discountPercentage = 0;
+    let totalStock = 0;
 
     if (clean.variants?.length) {
       basePrice = Math.min(...clean.variants.map((v) => Number(v.price) || 0));
-      // Calculate max discount across all variants
       const discounts = clean.variants.map((v) => {
         const vPrice = Number(v.price) || 0;
         const vCompare = Number(v.compareAtPrice) || 0;
         return vCompare > vPrice ? Math.round(((vCompare - vPrice) / vCompare) * 100) : 0;
       });
       discountPercentage = Math.max(0, ...discounts);
+
+      clean.variants.forEach((v) => {
+        if (v.sizes?.length) {
+          v.sizes.forEach((s) => {
+            totalStock += Math.max(0, Number(s.stock) || 0);
+          });
+        } else {
+          totalStock += Math.max(0, Number(v.stock) || 0);
+        }
+      });
     } else {
       basePrice = clean.basePrice || 0;
       discountPercentage = clean.discountPercentage || 0;
+      totalStock = Math.max(0, Number(clean.stock) || 0);
     }
 
     // Resolve images array
@@ -185,16 +275,22 @@ export const POST = requireApprovedSeller(async (req, ctx, admin) => {
         ? clean.images
         : clean.variants?.[0]?.images || [];
 
-    // Ownership: a seller can only create products under their own account.
-    // A superadmin creating a product directly leaves it unowned (null).
-    const seller = admin.role === 'seller' ? admin.id : (body.seller || null);
+    // Requirement 03: Strictly enforce ownership
+    // Admin products are assigned to Admin ownership (null).
+    // Seller products are automatically assigned to authenticated Seller ID.
+    // Never trust a sellerId submitted by the frontend.
+    const seller = admin.role === 'seller' ? admin.id : null;
 
     const product = await Product.create({
       ...clean,
+      productId,
       slug,
       sku,
+      category: cat._id,
+      subcategory: validSubcategoryId,
       basePrice,
       discountPercentage,
+      totalStock,
       images,
       isBestSeller: Boolean(body.isBestSeller ?? clean.isBestSeller),
       seller,

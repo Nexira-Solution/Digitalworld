@@ -27,7 +27,22 @@ const FONT_SANS = "var(--font-outfit), 'Outfit', sans-serif";
 const FEATURED_LIMIT = 6;
 const SELLER_PRODUCT_LIMIT = 24;
 
-const LIVE_BANNER = { isActive: true, approval: { $nin: ['pending', 'rejected'] } };
+// Strictly fetch Admin-managed homepage hero banners only (never seller storefront banners)
+async function getAdminHomepageBanners() {
+  const now = new Date();
+  return Banner.find({
+    isActive: true,
+    approval: 'approved',
+    seller: null,
+    bannerType: { $ne: 'storefront' },
+    $and: [
+      { $or: [{ startDate: null }, { startDate: { $lte: now } }] },
+      { $or: [{ endDate: null }, { endDate: { $gte: now } }] },
+    ],
+  })
+    .sort({ sortOrder: 1, createdAt: -1 })
+    .lean();
+}
 
 async function getData(sellerParam) {
   await dbConnect();
@@ -41,24 +56,25 @@ async function getData(sellerParam) {
       .lean();
   }
 
+  // The homepage hero section ALWAYS displays Admin-managed homepage banners exclusively
+  const adminBanners = await getAdminHomepageBanners();
+
   if (selected) {
-    const [banners, products, combos] = await Promise.all([
-      Banner.find({ ...LIVE_BANNER, seller: selected._id }).sort({ sortOrder: 1 }).lean(),
+    const [products, combos] = await Promise.all([
       Product.find({ isActive: true, seller: selected._id }).sort({ createdAt: -1 }).limit(SELLER_PRODUCT_LIMIT).lean(),
       // Assumes Combo stores its owner in `seller`; change the field name if it differs
       Combo.find({ isActive: true, seller: selected._id }).limit(6).lean(),
     ]);
-    return { selected, banners, products, combos, categories: [], reviews: [] };
+    return { selected, banners: adminBanners, products, combos, categories: [], reviews: [] };
   }
 
-  const [banners, products, reviews, combos, categories] = await Promise.all([
-    Banner.find(LIVE_BANNER).sort({ sortOrder: 1 }).lean(),
+  const [products, reviews, combos, categories] = await Promise.all([
     Product.find({ isActive: true, isActiveSeller: true }).sort({ createdAt: -1 }).limit(FEATURED_LIMIT).lean(),
     Review.find({ isApproved: true, isFeatured: true }).populate('product', 'name').limit(10).lean(),
     Combo.find({ isActive: true }).limit(6).lean(),
     Category.find({ isActive: true, parent: null }).sort({ sortOrder: 1, createdAt: 1 }).limit(12).lean(),
   ]);
-  return { selected: null, banners, products, combos, categories, reviews };
+  return { selected: null, banners: adminBanners, products, combos, categories, reviews };
 }
 
 export default async function HomePage({ searchParams }) {
@@ -75,7 +91,7 @@ export default async function HomePage({ searchParams }) {
 
   return (
     <div className="overflow-x-hidden bg-white">
-      {/* Banner (seller's own banners in seller view) */}
+      {/* Hero Banner (Admin-managed homepage banners only) */}
       <BannerCarousel banners={plainBanners} />
 
       {selected ? (

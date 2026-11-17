@@ -335,13 +335,22 @@ export default function AdminProductsPage() {
                     {/* Actions */}
                     <td className="p-3.5 text-right">
                       <div className="flex items-center justify-end gap-1.5">
-                        <Link
-                          href={`/admin/products/${p._id}/edit`}
-                          className="p-1.5 rounded-lg text-[#0F172A] hover:bg-neutral-200 transition-colors"
-                          title="Edit Product"
-                        >
-                          <Pencil size={15} />
-                        </Link>
+                        {p.seller ? (
+                          <span
+                            className="p-1.5 rounded-lg text-neutral-300 cursor-not-allowed inline-flex"
+                            title="Admin cannot edit seller-owned products. Only the product supplier can modify this item."
+                          >
+                            <Pencil size={15} />
+                          </span>
+                        ) : (
+                          <Link
+                            href={`/admin/products/${p._id}/edit`}
+                            className="p-1.5 rounded-lg text-[#0F172A] hover:bg-neutral-200 transition-colors"
+                            title="Edit Product"
+                          >
+                            <Pencil size={15} />
+                          </Link>
+                        )}
                         <button
                           type="button"
                           disabled={deletingId === p._id}

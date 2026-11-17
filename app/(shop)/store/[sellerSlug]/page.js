@@ -18,8 +18,9 @@ import {
   Filter,
   ChevronRight,
   Home,
-  Sparkles,
-  ShoppingBag,
+  CheckCircle2,
+  XCircle,
+  ArrowUpDown,
 } from 'lucide-react';
 import ProductCard from '@/components/ProductCard';
 
@@ -33,6 +34,8 @@ export default function SellerStorefrontPage() {
   const [productsLoading, setProductsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('all');
+  const [stockFilter, setStockFilter] = useState('all'); // 'all' | 'in_stock' | 'out_of_stock'
+  const [sortBy, setSortBy] = useState('default'); // 'default' | 'price_asc' | 'price_desc' | 'newest' | 'rating'
   const [totalCount, setTotalCount] = useState(0);
 
   // Fetch Store Profile
@@ -57,6 +60,8 @@ export default function SellerStorefrontPage() {
     const params = new URLSearchParams();
     if (searchQuery.trim()) params.set('q', searchQuery.trim());
     if (selectedCategory && selectedCategory !== 'all') params.set('category', selectedCategory);
+    if (stockFilter && stockFilter !== 'all') params.set('stock', stockFilter);
+    if (sortBy && sortBy !== 'default') params.set('sort', sortBy);
 
     fetch(`/api/stores/${sellerSlug}/products?${params}`)
       .then((r) => r.json())
@@ -66,7 +71,7 @@ export default function SellerStorefrontPage() {
       })
       .catch((err) => console.error(err))
       .finally(() => setProductsLoading(false));
-  }, [sellerSlug, searchQuery, selectedCategory]);
+  }, [sellerSlug, searchQuery, selectedCategory, stockFilter, sortBy]);
 
   useEffect(() => {
     loadProducts();
@@ -127,15 +132,15 @@ export default function SellerStorefrontPage() {
 
           {/* Banner Graphic if available */}
           {store.shopBanner ? (
-            <div className="relative w-full h-44 sm:h-56">
+            <div className="relative w-full h-44 sm:h-64">
               <Image
                 src={store.shopBanner}
                 alt={`${store.businessName} banner`}
                 fill
                 unoptimized
-                className="object-cover opacity-60"
+                className="object-cover opacity-75"
               />
-              <div className="absolute inset-0 bg-gradient-to-t from-[#0F172A] via-[#0F172A]/60 to-transparent" />
+              <div className="absolute inset-0 bg-gradient-to-t from-[#0F172A] via-[#0F172A]/50 to-transparent" />
             </div>
           ) : (
             <div className="h-10 sm:h-12" />
@@ -170,7 +175,7 @@ export default function SellerStorefrontPage() {
                   {store.isVerifiedMerchant && (
                     <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
                       <ShieldCheck size={13} />
-                      <span>Verified Supplier</span>
+                      <span>{store.isPlatformStore ? 'Official Platform' : 'Verified Supplier'}</span>
                     </span>
                   )}
                 </div>
@@ -207,29 +212,57 @@ export default function SellerStorefrontPage() {
           </div>
         </div>
 
-        {/* ======================= SUPPLIER PERFORMANCE STATISTICS BAR ======================= */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4 mt-5">
+        {/* ======================= SUPPLIER PERFORMANCE & FULFILMENT BAR ======================= */}
+        <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 sm:gap-4 mt-5">
           <div className="bg-white rounded-2xl p-4 border border-[#E8E8E8] shadow-xs flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-[#FAF7EE] text-[#C9A227] flex items-center justify-center shrink-0 border border-[#E7E2D6]">
-              <Clock size={18} />
+            <div className="w-10 h-10 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center shrink-0 border border-blue-100">
+              <Package size={18} />
             </div>
             <div>
-              <div className="text-[11px] font-bold text-[#6B6B6B] uppercase tracking-wider">
-                Response Time
+              <div className="text-[10px] font-bold text-[#6B6B6B] uppercase tracking-wider">
+                Total Products
               </div>
               <div className="font-extrabold text-sm sm:text-base text-[#000000]">
-                {store.responseTime}
+                {store.totalProducts}
               </div>
             </div>
           </div>
 
           <div className="bg-white rounded-2xl p-4 border border-[#E8E8E8] shadow-xs flex items-center gap-3">
             <div className="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center shrink-0 border border-emerald-100">
+              <CheckCircle2 size={18} />
+            </div>
+            <div>
+              <div className="text-[10px] font-bold text-[#6B6B6B] uppercase tracking-wider">
+                In Stock
+              </div>
+              <div className="font-extrabold text-sm sm:text-base text-emerald-700">
+                {store.availableProducts}
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-white rounded-2xl p-4 border border-[#E8E8E8] shadow-xs flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-rose-50 text-rose-600 flex items-center justify-center shrink-0 border border-rose-100">
+              <XCircle size={18} />
+            </div>
+            <div>
+              <div className="text-[10px] font-bold text-[#6B6B6B] uppercase tracking-wider">
+                Out of Stock
+              </div>
+              <div className="font-extrabold text-sm sm:text-base text-rose-600">
+                {store.outOfStockProducts}
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-white rounded-2xl p-4 border border-[#E8E8E8] shadow-xs flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-[#FAF7EE] text-[#C9A227] flex items-center justify-center shrink-0 border border-[#E7E2D6]">
               <Truck size={18} />
             </div>
             <div>
-              <div className="text-[11px] font-bold text-[#6B6B6B] uppercase tracking-wider">
-                On-Time Dispatch
+              <div className="text-[10px] font-bold text-[#6B6B6B] uppercase tracking-wider">
+                Dispatch Rate
               </div>
               <div className="font-extrabold text-sm sm:text-base text-[#000000]">
                 {store.onTimeDispatchRate}%
@@ -237,52 +270,131 @@ export default function SellerStorefrontPage() {
             </div>
           </div>
 
-          <div className="bg-white rounded-2xl p-4 border border-[#E8E8E8] shadow-xs flex items-center gap-3">
+          <div className="col-span-2 sm:col-span-1 bg-white rounded-2xl p-4 border border-[#E8E8E8] shadow-xs flex items-center gap-3">
             <div className="w-10 h-10 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center shrink-0 border border-purple-100">
-              <Repeat size={18} />
+              <Clock size={18} />
             </div>
             <div>
-              <div className="text-[11px] font-bold text-[#6B6B6B] uppercase tracking-wider">
-                Reorder Rate
+              <div className="text-[10px] font-bold text-[#6B6B6B] uppercase tracking-wider">
+                Response Time
               </div>
               <div className="font-extrabold text-sm sm:text-base text-[#000000]">
-                {store.reorderRate}%
-              </div>
-            </div>
-          </div>
-
-          <div className="bg-white rounded-2xl p-4 border border-[#E8E8E8] shadow-xs flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center shrink-0 border border-blue-100">
-              <Package size={18} />
-            </div>
-            <div>
-              <div className="text-[11px] font-bold text-[#6B6B6B] uppercase tracking-wider">
-                Live Catalog
-              </div>
-              <div className="font-extrabold text-sm sm:text-base text-[#000000]">
-                {store.totalProducts} Products
+                {store.responseTime}
               </div>
             </div>
           </div>
         </div>
 
         {/* ======================= PRODUCT SEARCH & FILTER TOOLBAR ======================= */}
-        <div className="mt-8 flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-4 rounded-2xl border border-[#E8E8E8] shadow-xs">
-          <div className="relative flex-1 max-w-md">
-            <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[#6B6B6B]" />
-            <input
-              type="text"
-              placeholder={`Search in ${store.businessName}…`}
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-10 pr-4 py-2 text-xs sm:text-sm rounded-xl border border-[#D6D6D6] outline-none focus:border-[#000000] transition-colors"
-            />
+        <div className="mt-8 bg-white p-4 sm:p-5 rounded-2xl border border-[#E8E8E8] shadow-xs space-y-4">
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+            {/* Search Input */}
+            <div className="relative flex-1 max-w-md">
+              <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[#6B6B6B]" />
+              <input
+                type="text"
+                placeholder={`Search products in ${store.businessName}…`}
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full pl-10 pr-4 py-2 text-xs sm:text-sm rounded-xl border border-[#D6D6D6] outline-none focus:border-[#000000] transition-colors"
+              />
+            </div>
+
+            {/* Controls: Stock Filter, Sort & Count */}
+            <div className="flex items-center gap-3 flex-wrap">
+              {/* Stock Filter Segment */}
+              <div className="inline-flex p-1 bg-[#F5F5F5] rounded-xl border border-[#E8E8E8] text-xs font-semibold">
+                <button
+                  type="button"
+                  onClick={() => setStockFilter('all')}
+                  className={`px-3 py-1.5 rounded-lg transition-all ${
+                    stockFilter === 'all'
+                      ? 'bg-black text-white shadow-xs'
+                      : 'text-[#6B6B6B] hover:text-black'
+                  }`}
+                >
+                  All Products
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setStockFilter('in_stock')}
+                  className={`px-3 py-1.5 rounded-lg transition-all ${
+                    stockFilter === 'in_stock'
+                      ? 'bg-emerald-600 text-white shadow-xs'
+                      : 'text-[#6B6B6B] hover:text-black'
+                  }`}
+                >
+                  In Stock
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setStockFilter('out_of_stock')}
+                  className={`px-3 py-1.5 rounded-lg transition-all ${
+                    stockFilter === 'out_of_stock'
+                      ? 'bg-rose-600 text-white shadow-xs'
+                      : 'text-[#6B6B6B] hover:text-black'
+                  }`}
+                >
+                  Out of Stock
+                </button>
+              </div>
+
+              {/* Price / Relevance Sort */}
+              <div className="flex items-center gap-1.5 text-xs">
+                <ArrowUpDown size={14} className="text-[#6B6B6B]" />
+                <select
+                  value={sortBy}
+                  onChange={(e) => setSortBy(e.target.value)}
+                  aria-label="Sort products by"
+                  className="px-3 py-1.5 rounded-xl border border-[#D6D6D6] bg-white text-xs font-medium text-[#000000] outline-none focus:border-black"
+                >
+                  <option value="default">Featured / Best Seller</option>
+                  <option value="price_asc">Price: Low to High</option>
+                  <option value="price_desc">Price: High to Low</option>
+                  <option value="newest">Newest Arrivals</option>
+                  <option value="rating">Top Customer Rated</option>
+                </select>
+              </div>
+
+              <div className="text-xs text-[#6B6B6B] pl-2 border-l border-[#E8E8E8] hidden sm:block">
+                Showing <strong className="text-black">{totalCount}</strong> items
+              </div>
+            </div>
           </div>
 
-          <div className="flex items-center gap-2 text-xs">
-            <span className="font-bold text-[#6B6B6B] shrink-0">Showing:</span>
-            <span className="font-extrabold text-[#000000]">{totalCount} items</span>
-          </div>
+          {/* Category Chips if store has multiple categories */}
+          {store.productCategories?.length > 1 && (
+            <div className="flex items-center gap-2 overflow-x-auto pt-2 border-t border-[#F0F0F0] no-scrollbar">
+              <span className="text-[11px] font-bold text-[#6B6B6B] uppercase tracking-wider shrink-0 mr-1">
+                Category:
+              </span>
+              <button
+                type="button"
+                onClick={() => setSelectedCategory('all')}
+                className={`px-3 py-1 rounded-full text-xs font-semibold shrink-0 transition-all ${
+                  selectedCategory === 'all'
+                    ? 'bg-[#FAF7EE] text-[#C9A227] border border-[#E7E2D6]'
+                    : 'bg-neutral-100 text-[#6B6B6B] hover:bg-neutral-200'
+                }`}
+              >
+                All Categories
+              </button>
+              {store.productCategories.map((cat) => (
+                <button
+                  key={cat}
+                  type="button"
+                  onClick={() => setSelectedCategory(cat)}
+                  className={`px-3 py-1 rounded-full text-xs font-semibold shrink-0 transition-all ${
+                    selectedCategory === cat
+                      ? 'bg-[#FAF7EE] text-[#C9A227] border border-[#E7E2D6]'
+                      : 'bg-neutral-100 text-[#6B6B6B] hover:bg-neutral-200'
+                  }`}
+                >
+                  {cat}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* ======================= PRODUCT GRID ======================= */}
@@ -305,15 +417,19 @@ export default function SellerStorefrontPage() {
               </div>
               <h3 className="font-bold text-base text-[#000000]">No Products Match</h3>
               <p className="text-xs text-[#6B6B6B] max-w-md mx-auto">
-                No active products currently match your search in this supplier&apos;s catalog.
+                No active products match your current search and filter settings in this store.
               </p>
-              {searchQuery && (
+              {(searchQuery || stockFilter !== 'all' || selectedCategory !== 'all') && (
                 <button
                   type="button"
-                  onClick={() => setSearchQuery('')}
+                  onClick={() => {
+                    setSearchQuery('');
+                    setStockFilter('all');
+                    setSelectedCategory('all');
+                  }}
                   className="px-4 py-2 rounded-xl text-xs font-bold border border-[#000000] text-[#000000] hover:bg-neutral-50"
                 >
-                  Clear Search Filter
+                  Clear All Filters
                 </button>
               )}
             </div>
@@ -323,4 +439,3 @@ export default function SellerStorefrontPage() {
     </div>
   );
 }
-

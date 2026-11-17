@@ -47,8 +47,13 @@ export const GET = requireSuperAdmin(async (req) => {
   const page = Number(searchParams.get('page') || 1);
   const limit = Number(searchParams.get('limit') || 20);
   const [orders, total] = await Promise.all([
-    Order.find(query).sort({ createdAt: -1 }).skip((page - 1) * limit).limit(limit),
-    Order.countDocuments(query)
+    Order.find(query)
+      .populate('items.seller', 'name storeName email')
+      .sort({ createdAt: -1 })
+      .skip((page - 1) * limit)
+      .limit(limit)
+      .lean(),
+    Order.countDocuments(query),
   ]);
   return NextResponse.json({ orders, total, page, pages: Math.ceil(total / limit) });
 });

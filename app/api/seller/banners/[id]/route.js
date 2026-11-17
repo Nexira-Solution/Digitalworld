@@ -1,48 +1,46 @@
+export const dynamic = 'force-dynamic';
+
 import { NextResponse } from 'next/server';
 import { dbConnect } from '@/lib/mongodb';
 import Banner from '@/models/Banner';
-import { requireApprovedSeller } from '@/lib/apiAuth';
+import { requireAdmin } from '@/lib/apiAuth';
 
-const CONTENT_FIELDS = ['title', 'subtitle', 'image', 'mobileImage', 'link', 'buttonText'];
-
-export const PUT = requireApprovedSeller(async (req, { params }, admin) => {
+export const PUT = requireAdmin(async (req, { params }, admin) => {
   const { id } = await params;
   await dbConnect();
 
-  // Scoped to this seller, so they can never touch another seller's or admin's banner
   const banner = await Banner.findOne({ _id: id, seller: admin.id });
-  if (!banner) return NextResponse.json({ error: 'Banner not found.' }, { status: 404 });
-
-  const body = await req.json();
-  let contentChanged = false;
-
-  for (const k of CONTENT_FIELDS) {
-    if (body[k] !== undefined && body[k] !== banner[k]) {
-      banner[k] = body[k];
-      contentChanged = true;
-    }
+  if (!banner) {
+    return NextResponse.json({ error: 'Banner not found or unauthorized' }, { status: 404 });
   }
 
-  // Hiding or showing doesn't need re-approval
-  if (body.isActive !== undefined) banner.isActive = !!body.isActive;
+  const body = await req.json();
+  const allowed = ['title', 'subtitle', 'description', 'image', 'mobileImage', 'link', 'buttonText', 'isActive'];
 
-  // Any content edit needs fresh approval
-  if (contentChanged) {
+  allowed.forEach((field) => {
+    if (body[field] !== undefined) {
+      banner[field] = body[field];
+    }
+  });
+
+  // If seller changed image or critical text, reset approval to pending
+  if (body.image && body.image !== banner.image) {
     banner.approval = 'pending';
     banner.rejectionReason = '';
   }
 
   await banner.save();
-  return NextResponse.json({ banner });
+  return NextResponse.json({ success: true, banner });
 });
 
-export const DELETE = requireApprovedSeller(async (req, { params }, admin) => {
+export const DELETE = requireAdmin(async (req, { params }, admin) => {
   const { id } = await params;
   await dbConnect();
 
-  const banner = await Banner.findOne({ _id: id, seller: admin.id });
-  if (!banner) return NextResponse.json({ error: 'Banner not found.' }, { status: 404 });
+  const banner = await Banner.findOneAndDelete({ _id: id, seller: admin.id });
+  if (!banner) {
+    return NextResponse.json({ error: 'Banner not found or unauthorized' }, { status: 404 });
+  }
 
-  await banner.deleteOne();
   return NextResponse.json({ success: true });
 });

@@ -4,8 +4,15 @@ import { NextResponse } from 'next/server';
 import { dbConnect } from '@/lib/mongodb';
 import Coupon from '@/models/Coupon';
 
+// Feature 14 Architectural Feature Flag
+const ENABLE_COUPONS = false;
+
 export async function GET() {
   try {
+    if (!ENABLE_COUPONS) {
+      return NextResponse.json({ success: true, coupons: [] });
+    }
+
     await dbConnect();
     const now = new Date();
 
